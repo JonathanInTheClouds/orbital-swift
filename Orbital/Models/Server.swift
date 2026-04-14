@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-enum AuthMethod: String, Codable, CaseIterable {
+enum AuthMethod: String, Codable, CaseIterable, Sendable {
     case password = "password"
     case privateKey = "privateKey"
 
