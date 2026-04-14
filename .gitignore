@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# Xcode user data
+*.xcuserstate
+*.xcscmblueprint
+**/xcuserdata/
+
+# Xcode and SwiftPM build products
+.build/
+DerivedData/
+build/
+
+# Swift Package Manager
+.swiftpm/
+
+# Playground files
+timeline.xctimeline
+playground.xcworkspace
+
+# Dependency managers
+Carthage/Build/
+Pods/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# App secrets and local environment files
+.env
+.env.*
+*.key
+*.p12
+*.mobileprovision
+
+# Local AI/editor tooling
+.claude/
+
+# Node artifacts inside vendored web assets
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

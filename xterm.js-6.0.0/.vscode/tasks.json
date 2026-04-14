@@ -1,0 +1,81 @@
+{
+  "version": "2.0.0",
+  "presentation": {
+    "echo": false,
+    "reveal": "always",
+    "focus": false,
+    "panel": "dedicated",
+    "showReuseMessage": true
+  },
+  "tasks": [
+    // Compound tasks
+    {
+      "label": "Development",
+      "dependsOn": ["demo-server", "tsc", "esbuild", "esbuild-demo"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+
+    // Demo
+    {
+      "label": "demo-server",
+      "type": "npm",
+      "script": "start",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "group": "xterm-demo"
+      }
+    },
+
+    // Build
+    {
+      "label": "tsc",
+      "type": "npm",
+      "script": "tsc-watch",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": {
+        "group": "xterm-build"
+      }
+    },
+    {
+      "label": "esbuild",
+      "type": "npm",
+      "script": "esbuild-watch",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": "$esbuild-watch",
+      "presentation": {
+        "group": "xterm-build"
+      }
+    },
+    {
+      "label": "esbuild-demo",
+      "type": "npm",
+      "script": "esbuild-demo-watch",
+      "dependsOn": ["esbuild", "tsc"],
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": "$esbuild-watch",
+      "presentation": {
+        "group": "xterm-demo"
+      }
+    },
+
+    // Test
+    {
+      "type": "npm",
+      "script": "test",
+      "group":{
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

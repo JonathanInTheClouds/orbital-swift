@@ -12,7 +12,10 @@ import SwiftData
 struct OrbitalApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Server.self,
+            MetricSnapshot.self,
+            Script.self,
+            ScriptRun.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +28,7 @@ struct OrbitalApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootTabView()
         }
         .modelContainer(sharedModelContainer)
     }

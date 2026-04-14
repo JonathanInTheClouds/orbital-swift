@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		240C314A2F8DD2850060B73F /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 240C31492F8DD2850060B73F /* NIOSSH */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		240C30FB2F8DC61E0060B73F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				240C314A2F8DD2850060B73F /* NIOSSH in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = Orbital;
 			packageProductDependencies = (
+				240C31492F8DD2850060B73F /* NIOSSH */,
 			);
 			productName = Orbital;
 			productReference = 240C30EB2F8DC61B0060B73F /* Orbital.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 240C30E22F8DC61B0060B73F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				240C31482F8DD2850060B73F /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 240C30EC2F8DC61B0060B73F /* Products */;
 			projectDirPath = "";
@@ -578,6 +587,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		240C31482F8DD2850060B73F /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-ssh.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		240C31492F8DD2850060B73F /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 240C31482F8DD2850060B73F /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 240C30E32F8DC61B0060B73F /* Project object */;
 }

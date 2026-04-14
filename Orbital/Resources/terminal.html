@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Orbital Terminal</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #1a1b26;
+    overflow: hidden;
+  }
+  #terminal {
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+
+<script type="module">
+  import { Terminal } from './xterm.mjs';
+  import { FitAddon } from './addon-fit.mjs';
+
+  // ── Terminal setup ────────────────────────────────────────────────────────
+  const term = new Terminal({
+    fontFamily: '"Menlo", "Cascadia Code", "DejaVu Sans Mono", monospace',
+    fontSize: 13,
+    lineHeight: 1.2,
+    cursorBlink: true,
+    cursorStyle: 'block',
+    theme: {
+      background:    '#1a1b26',
+      foreground:    '#c0caf5',
+      cursor:        '#c0caf5',
+      black:         '#15161e',
+      red:           '#f7768e',
+      green:         '#9ece6a',
+      yellow:        '#e0af68',
+      blue:          '#7aa2f7',
+      magenta:       '#bb9af7',
+      cyan:          '#7dcfff',
+      white:         '#a9b1d6',
+      brightBlack:   '#414868',
+      brightRed:     '#f7768e',
+      brightGreen:   '#9ece6a',
+      brightYellow:  '#e0af68',
+      brightBlue:    '#7aa2f7',
+      brightMagenta: '#bb9af7',
+      brightCyan:    '#7dcfff',
+      brightWhite:   '#c0caf5',
+    }
+  });
+
+  const fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById('terminal'));
+  fitAddon.fit();
+
+  // ── Input: forward keystrokes to Swift ───────────────────────────────────
+  term.onData(data => {
+    window.webkit.messageHandlers.terminalInput.postMessage(data);
+  });
+
+  // ── Output: receive base64-encoded bytes from Swift, write to terminal ───
+  window.receiveData = function(base64String) {
+    const binary = atob(base64String);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    term.write(bytes);
+  };
+
+  // ── Resize: notify Swift of new terminal dimensions ───────────────────────
+  const resizeObserver = new ResizeObserver(() => {
+    fitAddon.fit();
+    window.webkit.messageHandlers.terminalResize.postMessage({
+      cols: term.cols,
+      rows: term.rows
+    });
+  });
+  resizeObserver.observe(document.getElementById('terminal'));
+
+  // ── Initial greeting ──────────────────────────────────────────────────────
+  term.writeln('\x1b[1;34m  Orbital\x1b[0m \x1b[2m— Connecting…\x1b[0m');
+  term.writeln('');
+</script>
+</body>
+</html>

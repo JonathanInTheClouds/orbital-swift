@@ -1,0 +1,45 @@
+//
+//  RootTabView.swift
+//  Orbital
+//
+//  Created by Jonathan on 4/13/26.
+//
+
+import SwiftUI
+import SwiftData
+
+struct RootTabView: View {
+    @State private var selectedTab: Tab = .servers
+
+    enum Tab {
+        case servers, terminal, settings
+    }
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            ServerListView()
+                .tabItem {
+                    Label("Servers", systemImage: "server.rack")
+                }
+                .tag(Tab.servers)
+
+            TerminalListView()
+                .tabItem {
+                    Label("Terminal", systemImage: "terminal")
+                }
+                .tag(Tab.terminal)
+
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .tag(Tab.settings)
+        }
+        .environment(SSHService.shared)
+    }
+}
+
+#Preview {
+    RootTabView()
+        .modelContainer(for: [Server.self, MetricSnapshot.self, Script.self, ScriptRun.self], inMemory: true)
+}
