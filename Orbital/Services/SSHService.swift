@@ -50,6 +50,122 @@ enum ConnectionStatus: Equatable {
     }
 }
 
+struct SSHTerminalSize: Equatable, Sendable {
+    let columns: Int
+    let rows: Int
+    let pixelWidth: Int
+    let pixelHeight: Int
+
+    init(columns: Int, rows: Int, pixelWidth: Int = 0, pixelHeight: Int = 0) {
+        self.columns = columns
+        self.rows = rows
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+    }
+
+    nonisolated static let `default` = SSHTerminalSize(columns: 80, rows: 24)
+}
+
+enum SSHBackendKind: String, CaseIterable, Identifiable {
+    case nioSSH
+    case libssh
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .nioSSH:
+            return "NIOSSH"
+        case .libssh:
+            return "libssh"
+        }
+    }
+
+    var statusDescription: String {
+        switch self {
+        case .nioSSH:
+            return "Current in-app SSH engine"
+        case .libssh:
+            return LibsshBridgeLoader.isNativeBridgeAvailable
+                ? "Native libssh bridge available"
+                : "Native libssh bridge not integrated yet"
+        }
+    }
+}
+
+enum SSHAuthenticationMaterial: Sendable {
+    case password(username: String, password: String)
+    case privateKey(username: String, privateKeyData: Data)
+}
+
+struct SSHConnectionTarget: Sendable {
+    let serverID: UUID
+    let serverName: String
+    let host: String
+    let port: Int
+    let username: String
+    let authMethod: AuthMethod
+    let credentialRef: String
+
+    init(server: Server) {
+        self.serverID = server.id
+        self.serverName = server.name
+        self.host = server.host
+        self.port = server.port
+        self.username = server.username
+        self.authMethod = server.authMethod
+        self.credentialRef = server.credentialRef
+    }
+}
+
+struct SSHHostKeyVerifier: Sendable {
+    let host: String
+
+    private var keychainKey: String {
+        "hostkey:\(host)"
+    }
+
+    func validate(fingerprint: String) async throws {
+        let stored = await KeychainService.shared.loadIfPresent(key: keychainKey)
+            .flatMap { String(data: $0, encoding: .utf8) }
+
+        if let stored {
+            guard stored == fingerprint else {
+                throw SSHServiceError.hostKeyMismatch
+            }
+            return
+        }
+
+        guard let data = fingerprint.data(using: .utf8) else {
+            throw SSHServiceError.hostKeyMismatch
+        }
+        try await KeychainService.shared.save(key: keychainKey, data: data)
+    }
+}
+
+enum SSHBackendFactory {
+    static func makePreferredBackend() -> any SSHBackend {
+        if LibsshBridgeLoader.isNativeBridgeAvailable {
+            return LibsshBackend()
+        }
+        return NIOSSHBackend()
+    }
+}
+
+// MARK: - Backend Contracts
+
+protocol SSHSessionTransport: AnyObject {
+    func write(_ data: Data)
+    func resize(to size: SSHTerminalSize)
+    func close()
+}
+
+protocol SSHBackend {
+    var kind: SSHBackendKind { get }
+    func connect(to target: SSHConnectionTarget, initialTerminalSize: SSHTerminalSize) async throws -> SSHSession
+    func presentableError(from error: any Error) -> any Error
+}
+
 // MARK: - SSH Session
 
 /// A live SSH shell session. Owns the NIO channels and exposes an output stream for the terminal UI.
@@ -57,36 +173,65 @@ final class SSHSession: Identifiable {
     let id: UUID = UUID()
     let serverID: UUID
     let serverName: String
+    let backendKind: SSHBackendKind
 
     /// Raw bytes arriving from the remote shell. Finishes when the connection drops.
     let outputStream: AsyncStream<Data>
 
-    private let tcpChannel: Channel
-    private let shellChannel: Channel
+    private let transport: any SSHSessionTransport
 
     init(
         serverID: UUID,
         serverName: String,
-        tcpChannel: Channel,
-        shellChannel: Channel,
+        backendKind: SSHBackendKind,
+        transport: any SSHSessionTransport,
         outputStream: AsyncStream<Data>
     ) {
         self.serverID = serverID
         self.serverName = serverName
-        self.tcpChannel = tcpChannel
-        self.shellChannel = shellChannel
+        self.backendKind = backendKind
+        self.transport = transport
         self.outputStream = outputStream
     }
 
-    /// Send raw input bytes to the remote shell (keyboard input, paste, etc.).
-    /// The `ShellHandler` in the pipeline wraps the ByteBuffer as SSHChannelData before sending.
+    func write(_ data: Data) {
+        transport.write(data)
+    }
+
+    func resize(to size: SSHTerminalSize) {
+        transport.resize(to: size)
+    }
+
+    func close() {
+        transport.close()
+    }
+}
+
+private final class NIOSSHSessionTransport: SSHSessionTransport {
+    private let tcpChannel: Channel
+    private let shellChannel: Channel
+
+    init(tcpChannel: Channel, shellChannel: Channel) {
+        self.tcpChannel = tcpChannel
+        self.shellChannel = shellChannel
+    }
+
     func write(_ data: Data) {
         var buffer = shellChannel.allocator.buffer(capacity: data.count)
         buffer.writeBytes(data)
         shellChannel.writeAndFlush(buffer, promise: nil)
     }
 
-    /// Close the shell and underlying TCP connection.
+    func resize(to size: SSHTerminalSize) {
+        let request = SSHChannelRequestEvent.WindowChangeRequest(
+            terminalCharacterWidth: size.columns,
+            terminalRowHeight: size.rows,
+            terminalPixelWidth: size.pixelWidth,
+            terminalPixelHeight: size.pixelHeight
+        )
+        shellChannel.triggerUserOutboundEvent(request, promise: nil)
+    }
+
     func close() {
         shellChannel.close(promise: nil)
         tcpChannel.close(promise: nil)
@@ -110,9 +255,14 @@ private final class ShellHandler: ChannelDuplexHandler {
     typealias OutboundOut = SSHChannelData
 
     private let continuation: AsyncStream<Data>.Continuation
+    private let initialTerminalSize: SSHTerminalSize
 
-    init(_ continuation: AsyncStream<Data>.Continuation) {
+    init(
+        _ continuation: AsyncStream<Data>.Continuation,
+        initialTerminalSize: SSHTerminalSize
+    ) {
         self.continuation = continuation
+        self.initialTerminalSize = initialTerminalSize
     }
 
     // Request a PTY then a shell as soon as the child channel becomes active.
@@ -123,10 +273,10 @@ private final class ShellHandler: ChannelDuplexHandler {
         let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
             wantReply: true,
             term: "xterm-256color",
-            terminalCharacterWidth: 80,
-            terminalRowHeight: 24,
-            terminalPixelWidth: 0,
-            terminalPixelHeight: 0,
+            terminalCharacterWidth: initialTerminalSize.columns,
+            terminalRowHeight: initialTerminalSize.rows,
+            terminalPixelWidth: initialTerminalSize.pixelWidth,
+            terminalPixelHeight: initialTerminalSize.pixelHeight,
             terminalModes: .init([:])
         )
         let ptyPromise = context.eventLoop.makePromise(of: Void.self)
@@ -181,6 +331,59 @@ private final class ShellHandler: ChannelDuplexHandler {
     }
 }
 
+// MARK: - SSH Transport State Handler
+
+/// Tracks the parent SSH transport lifecycle so the caller can wait for
+/// authentication before opening a child session channel.
+private final class SSHTransportStateHandler: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    private let serverName: String
+    private let authenticationPromise: EventLoopPromise<Void>
+    private var authenticationResolved = false
+
+    init(serverName: String, authenticationPromise: EventLoopPromise<Void>) {
+        self.serverName = serverName
+        self.authenticationPromise = authenticationPromise
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        switch event {
+        case is UserAuthSuccessEvent:
+            guard !authenticationResolved else { break }
+            authenticationResolved = true
+            log.info("[\(self.serverName)] SSH authentication succeeded")
+            authenticationPromise.succeed(())
+
+        case let banner as NIOUserAuthBannerEvent:
+            log.info("[\(self.serverName)] SSH auth banner received: \(banner.message, privacy: .public)")
+
+        default:
+            break
+        }
+
+        context.fireUserInboundEventTriggered(event)
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        failAuthenticationIfNeeded(SSHServiceError.connectionClosedBeforeAuthentication)
+        context.fireChannelInactive()
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        log.error("[\(self.serverName)] SSH transport error: \(String(reflecting: error))")
+        failAuthenticationIfNeeded(error)
+        context.fireErrorCaught(error)
+        context.close(promise: nil)
+    }
+
+    private func failAuthenticationIfNeeded(_ error: any Error) {
+        guard !authenticationResolved else { return }
+        authenticationResolved = true
+        authenticationPromise.fail(error)
+    }
+}
+
 // MARK: - Auth Delegates
 
 private final class PasswordAuthDelegate: NIOSSHClientUserAuthenticationDelegate {
@@ -198,9 +401,19 @@ private final class PasswordAuthDelegate: NIOSSHClientUserAuthenticationDelegate
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
         log.info("[PasswordAuthDelegate] nextAuthenticationType called — available: \(String(describing: availableMethods)), offered=\(self.offered)")
-        guard !offered, availableMethods.contains(.password) else {
-            log.warning("[PasswordAuthDelegate] not offering — offered=\(self.offered), hasPassword=\(availableMethods.contains(.password))")
-            nextChallengePromise.succeed(nil)
+        guard !offered else {
+            log.error("[PasswordAuthDelegate] password authentication was rejected by the server")
+            nextChallengePromise.fail(SSHServiceError.authenticationRejected(method: "password"))
+            return
+        }
+        guard availableMethods.contains(.password) else {
+            log.error("[PasswordAuthDelegate] server does not allow password auth; available=\(String(describing: availableMethods))")
+            nextChallengePromise.fail(
+                SSHServiceError.unsupportedAuthenticationMethod(
+                    requested: "password",
+                    available: availableMethods
+                )
+            )
             return
         }
         offered = true
@@ -229,9 +442,19 @@ private final class PrivateKeyAuthDelegate: NIOSSHClientUserAuthenticationDelega
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
         log.info("[PrivateKeyAuthDelegate] nextAuthenticationType called — available: \(String(describing: availableMethods)), offered=\(self.offered)")
-        guard !offered, availableMethods.contains(.publicKey) else {
-            log.warning("[PrivateKeyAuthDelegate] not offering — offered=\(self.offered), hasPublicKey=\(availableMethods.contains(.publicKey))")
-            nextChallengePromise.succeed(nil)
+        guard !offered else {
+            log.error("[PrivateKeyAuthDelegate] private key authentication was rejected by the server")
+            nextChallengePromise.fail(SSHServiceError.authenticationRejected(method: "public key"))
+            return
+        }
+        guard availableMethods.contains(.publicKey) else {
+            log.error("[PrivateKeyAuthDelegate] server does not allow public key auth; available=\(String(describing: availableMethods))")
+            nextChallengePromise.fail(
+                SSHServiceError.unsupportedAuthenticationMethod(
+                    requested: "public key",
+                    available: availableMethods
+                )
+            )
             return
         }
         offered = true
@@ -253,10 +476,10 @@ private final class PrivateKeyAuthDelegate: NIOSSHClientUserAuthenticationDelega
 
 /// Trust-on-first-connect host key pinning using NIOSSH's String(openSSHPublicKey:) as the stable fingerprint.
 private final class TrustOnFirstConnectDelegate: NIOSSHClientServerAuthenticationDelegate {
-    private let keychainKey: String
+    private let verifier: SSHHostKeyVerifier
 
     init(host: String) {
-        self.keychainKey = "hostkey:\(host)"
+        self.verifier = SSHHostKeyVerifier(host: host)
     }
 
     func validateHostKey(
@@ -265,31 +488,39 @@ private final class TrustOnFirstConnectDelegate: NIOSSHClientServerAuthenticatio
     ) {
         // String(openSSHPublicKey:) produces a stable "algorithm base64key" representation
         let fingerprint = String(openSSHPublicKey: hostKey)
-        let keychainKey = self.keychainKey
-        log.info("[HostKeyDelegate] validateHostKey called for keychainKey='\(keychainKey)' fingerprint prefix='\(fingerprint.prefix(30))…'")
+        log.info("[HostKeyDelegate] validateHostKey called for host='\(self.verifier.host)' fingerprint prefix='\(fingerprint.prefix(30))…'")
 
         Task {
-            let stored = await KeychainService.shared.loadIfPresent(key: keychainKey)
-                .flatMap { String(data: $0, encoding: .utf8) }
-
-            if let stored {
-                if stored == fingerprint {
-                    log.info("[HostKeyDelegate] fingerprint matches stored key — accepting")
-                    validationCompletePromise.succeed()
-                } else {
-                    log.error("[HostKeyDelegate] fingerprint MISMATCH — rejecting connection")
-                    validationCompletePromise.fail(SSHServiceError.hostKeyMismatch)
-                }
-            } else {
-                log.info("[HostKeyDelegate] no stored key — trusting on first connect and saving")
-                guard let data = fingerprint.data(using: .utf8) else {
-                    validationCompletePromise.fail(SSHServiceError.hostKeyMismatch)
-                    return
-                }
-                try? await KeychainService.shared.save(key: keychainKey, data: data)
+            do {
+                try await self.verifier.validate(fingerprint: fingerprint)
                 validationCompletePromise.succeed()
+            } catch {
+                log.error("[HostKeyDelegate] host key validation failed: \(String(reflecting: error))")
+                validationCompletePromise.fail(error)
             }
         }
+    }
+}
+
+private func authenticationMaterial(for target: SSHConnectionTarget) async throws -> SSHAuthenticationMaterial {
+    switch target.authMethod {
+    case .password:
+        log.debug("[\(target.serverName)] Auth method: password, user=\(target.username)")
+        let password: String
+        if target.credentialRef.isEmpty {
+            log.warning("[\(target.serverName)] credentialRef is empty — connecting with empty password")
+            password = ""
+        } else {
+            password = try await KeychainService.shared.loadString(key: target.credentialRef)
+            log.debug("[\(target.serverName)] Loaded password credential from Keychain")
+        }
+        return .password(username: target.username, password: password)
+
+    case .privateKey:
+        log.debug("[\(target.serverName)] Auth method: privateKey, user=\(target.username)")
+        let keyData = try await KeychainService.shared.load(key: target.credentialRef)
+        log.debug("[\(target.serverName)] Loaded \(keyData.count)-byte key from Keychain")
+        return .privateKey(username: target.username, privateKeyData: keyData)
     }
 }
 
@@ -299,12 +530,22 @@ private final class TrustOnFirstConnectDelegate: NIOSSHClientServerAuthenticatio
 @MainActor
 final class SSHService {
     static let shared = SSHService()
-    private init() {}
+    private let backend: any SSHBackend
+
+    init(backend: (any SSHBackend)? = nil) {
+        self.backend = backend ?? SSHBackendFactory.makePreferredBackend()
+    }
 
     private(set) var statuses: [UUID: ConnectionStatus] = [:]
     private(set) var sessions: [UUID: SSHSession] = [:]
 
-    private let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+    var backendKind: SSHBackendKind {
+        backend.kind
+    }
+
+    var backendDisplayName: String {
+        backend.kind.displayName
+    }
 
     func status(for serverID: UUID) -> ConnectionStatus {
         statuses[serverID] ?? .disconnected
@@ -316,101 +557,22 @@ final class SSHService {
 
     // MARK: Connect
 
-    func connect(to server: Server) async throws -> SSHSession {
+    func connect(
+        to server: Server,
+        initialTerminalSize: SSHTerminalSize = .default
+    ) async throws -> SSHSession {
         statuses[server.id] = .connecting
         do {
-            let session = try await _connect(to: server)
+            let target = SSHConnectionTarget(server: server)
+            let session = try await backend.connect(to: target, initialTerminalSize: initialTerminalSize)
             sessions[server.id] = session
             statuses[server.id] = .connected
             return session
         } catch {
-            statuses[server.id] = .error(error.localizedDescription)
-            throw error
+            let presentableError = backend.presentableError(from: error)
+            statuses[server.id] = .error(presentableError.localizedDescription)
+            throw presentableError
         }
-    }
-
-    private func _connect(to server: Server) async throws -> SSHSession {
-        log.info("[\(server.name)] Starting connection to \(server.host):\(server.port)")
-
-        // 1. Build the appropriate auth delegate from the stored credential
-        let authDelegate: any NIOSSHClientUserAuthenticationDelegate
-
-        switch server.authMethod {
-        case .password:
-            log.debug("[\(server.name)] Auth method: password, user=\(server.username)")
-            let password: String
-            if server.credentialRef.isEmpty {
-                log.warning("[\(server.name)] credentialRef is empty — connecting with empty password")
-                password = ""
-            } else {
-                password = try await KeychainService.shared.loadString(key: server.credentialRef)
-                log.debug("[\(server.name)] Loaded password credential from Keychain")
-            }
-            authDelegate = PasswordAuthDelegate(username: server.username, password: password)
-
-        case .privateKey:
-            log.debug("[\(server.name)] Auth method: privateKey, user=\(server.username)")
-            let keyData = try await KeychainService.shared.load(key: server.credentialRef)
-            log.debug("[\(server.name)] Loaded \(keyData.count)-byte key from Keychain")
-            authDelegate = PrivateKeyAuthDelegate(username: server.username, privateKeyData: keyData)
-        }
-
-        // 2. Connect TCP + SSH handshake
-        let sshConfig = SSHClientConfiguration(
-            userAuthDelegate: authDelegate,
-            serverAuthDelegate: TrustOnFirstConnectDelegate(host: server.host)
-        )
-
-        log.info("[\(server.name)] Bootstrapping TCP connection…")
-        let tcpChannel: Channel
-        do {
-            tcpChannel = try await ClientBootstrap(group: group)
-                .channelInitializer { channel in
-                    channel.eventLoop.makeCompletedFuture {
-                        try channel.pipeline.syncOperations.addHandlers([
-                            NIOSSHHandler(
-                                role: .client(sshConfig),
-                                allocator: channel.allocator,
-                                inboundChildChannelInitializer: nil
-                            )
-                        ])
-                    }
-                }
-                .connectTimeout(.seconds(15))
-                .connect(host: server.host, port: server.port)
-                .get()
-            log.info("[\(server.name)] TCP channel established: \(String(describing: tcpChannel))")
-        } catch {
-            log.error("[\(server.name)] TCP connect failed: \(String(reflecting: error))")
-            throw error
-        }
-
-        // 3. Build the output pipe before opening the shell channel
-        let (outputStream, outputContinuation) = AsyncStream<Data>.makeStream()
-
-        // 4. Open shell channel; ShellHandler takes ownership of the continuation
-        log.info("[\(server.name)] Opening SSH shell channel…")
-        let shellChannel: Channel
-        do {
-            shellChannel = try await openShellChannel(
-                on: tcpChannel,
-                outputContinuation: outputContinuation
-            )
-            log.info("[\(server.name)] Shell channel open: \(String(describing: shellChannel))")
-        } catch {
-            log.error("[\(server.name)] Shell channel failed: \(String(reflecting: error))")
-            tcpChannel.close(promise: nil)
-            throw error
-        }
-
-        log.info("[\(server.name)] Connection complete.")
-        return SSHSession(
-            serverID: server.id,
-            serverName: server.name,
-            tcpChannel: tcpChannel,
-            shellChannel: shellChannel,
-            outputStream: outputStream
-        )
     }
 
     // MARK: Disconnect
@@ -420,12 +582,120 @@ final class SSHService {
         sessions.removeValue(forKey: serverID)
         statuses[serverID] = .disconnected
     }
+}
+
+final class NIOSSHBackend: SSHBackend {
+    let kind: SSHBackendKind = .nioSSH
+    private let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+
+    func connect(to target: SSHConnectionTarget, initialTerminalSize: SSHTerminalSize) async throws -> SSHSession {
+        log.info("[\(target.serverName)] Starting connection to \(target.host):\(target.port)")
+
+        let authMaterial = try await authenticationMaterial(for: target)
+        let authDelegate = try authDelegate(for: authMaterial)
+        let sshConfig = SSHClientConfiguration(
+            userAuthDelegate: authDelegate,
+            serverAuthDelegate: TrustOnFirstConnectDelegate(host: target.host)
+        )
+        nonisolated(unsafe) let bootstrapSSHConfig = sshConfig
+
+        final class AuthenticationPromiseBox {
+            var promise: EventLoopPromise<Void>?
+        }
+        let authPromiseBox = AuthenticationPromiseBox()
+
+        log.info("[\(target.serverName)] Bootstrapping TCP connection…")
+        let tcpChannel: Channel
+        do {
+            tcpChannel = try await ClientBootstrap(group: group)
+                .channelInitializer { channel in
+                    channel.eventLoop.makeCompletedFuture {
+                        let authenticationPromise = channel.eventLoop.makePromise(of: Void.self)
+                        authPromiseBox.promise = authenticationPromise
+                        try channel.pipeline.syncOperations.addHandlers([
+                            NIOSSHHandler(
+                                role: .client(bootstrapSSHConfig),
+                                allocator: channel.allocator,
+                                inboundChildChannelInitializer: nil
+                            ),
+                            SSHTransportStateHandler(
+                                serverName: target.serverName,
+                                authenticationPromise: authenticationPromise
+                            ),
+                        ])
+                    }
+                }
+                .connectTimeout(.seconds(15))
+                .connect(host: target.host, port: target.port)
+                .get()
+            log.info("[\(target.serverName)] TCP channel established: \(String(describing: tcpChannel))")
+        } catch {
+            log.error("[\(target.serverName)] TCP connect failed: \(String(reflecting: error))")
+            throw error
+        }
+
+        guard let authenticationPromise = authPromiseBox.promise else {
+            tcpChannel.close(promise: nil)
+            throw SSHServiceError.connectionClosedBeforeAuthentication
+        }
+
+        log.info("[\(target.serverName)] Waiting for SSH authentication…")
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await authenticationPromise.futureResult.get()
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(15))
+                    throw SSHServiceError.authenticationTimedOut
+                }
+
+                let result: Void? = try await group.next()
+                group.cancelAll()
+                if let result {
+                    return result
+                }
+            }
+            log.info("[\(target.serverName)] SSH transport is active")
+        } catch {
+            log.error("[\(target.serverName)] SSH authentication failed: \(String(reflecting: error))")
+            tcpChannel.close(promise: nil)
+            throw error
+        }
+
+        let (outputStream, outputContinuation) = AsyncStream<Data>.makeStream()
+
+        log.info("[\(target.serverName)] Opening SSH shell channel…")
+        let shellChannel: Channel
+        do {
+            shellChannel = try await openShellChannel(
+                on: tcpChannel,
+                outputContinuation: outputContinuation,
+                initialTerminalSize: initialTerminalSize
+            )
+            log.info("[\(target.serverName)] Shell channel open: \(String(describing: shellChannel))")
+        } catch {
+            log.error("[\(target.serverName)] Shell channel failed: \(String(reflecting: error))")
+            tcpChannel.close(promise: nil)
+            throw error
+        }
+
+        log.info("[\(target.serverName)] Connection complete.")
+        return SSHSession(
+            serverID: target.serverID,
+            serverName: target.serverName,
+            backendKind: kind,
+            transport: NIOSSHSessionTransport(tcpChannel: tcpChannel, shellChannel: shellChannel),
+            outputStream: outputStream
+        )
+    }
 
     // MARK: - Shell Channel
 
     private func openShellChannel(
         on tcpChannel: Channel,
-        outputContinuation: AsyncStream<Data>.Continuation
+        outputContinuation: AsyncStream<Data>.Continuation,
+        initialTerminalSize: SSHTerminalSize
     ) async throws -> Channel {
         log.info("[openShellChannel] looking up NIOSSHHandler in pipeline")
         // pipeline.handler(type:) returns an EventLoopFuture, so flatMap runs on the event loop.
@@ -442,13 +712,100 @@ final class SSHService {
                 return childChannel.eventLoop.makeCompletedFuture {
                     log.info("[openShellChannel] adding ShellHandler to child pipeline")
                     try childChannel.pipeline.syncOperations.addHandler(
-                        ShellHandler(outputContinuation)
+                        ShellHandler(outputContinuation, initialTerminalSize: initialTerminalSize)
                     )
                 }
             }
             log.info("[openShellChannel] waiting on channel promise")
             return promise.futureResult
         }.get()
+    }
+
+    private func authDelegate(
+        for material: SSHAuthenticationMaterial
+    ) throws -> any NIOSSHClientUserAuthenticationDelegate {
+        switch material {
+        case .password(let username, let password):
+            return PasswordAuthDelegate(username: username, password: password)
+        case .privateKey(let username, let privateKeyData):
+            return PrivateKeyAuthDelegate(username: username, privateKeyData: privateKeyData)
+        }
+    }
+
+    func presentableError(from error: any Error) -> any Error {
+        if error is SSHServiceError {
+            return error
+        }
+
+        guard let sshError = error as? NIOSSHError else {
+            return error
+        }
+
+        let message: String
+        switch sshError.type {
+        case .protocolViolation:
+            message = "The SSH server and client disagreed on the protocol during setup."
+        case .channelSetupRejected:
+            message = "The SSH server rejected the session channel request."
+        case .creatingChannelAfterClosure:
+            message = "The SSH connection closed before a session channel could be created."
+        case .keyExchangeNegotiationFailure:
+            message = "The SSH client and server could not agree on a supported algorithm set."
+        case .unsupportedVersion:
+            message = "The SSH server is using an unsupported protocol version."
+        case .tcpShutdown:
+            message = "The TCP connection closed before SSH setup completed cleanly."
+        default:
+            message = String(describing: sshError)
+        }
+
+        return SSHServiceError.sshLibraryError(message)
+    }
+}
+
+/// Placeholder for the libssh migration target. The app still defaults to
+/// `NIOSSHBackend` until the C bridge and Xcode integration land.
+final class LibsshBackend: SSHBackend {
+    let kind: SSHBackendKind = .libssh
+
+    private let bridge: (any LibsshClientBridge)?
+
+    init(bridge: (any LibsshClientBridge)? = LibsshBridgeLoader.load()) {
+        self.bridge = bridge
+    }
+
+    func connect(to target: SSHConnectionTarget, initialTerminalSize: SSHTerminalSize) async throws -> SSHSession {
+        guard let bridge else {
+            throw SSHServiceError.backendUnavailable(
+                "The libssh backend scaffold is present, but the native libssh bridge is not integrated yet."
+            )
+        }
+
+        let configuration = LibsshConnectionConfiguration(
+            host: target.host,
+            port: target.port,
+            authentication: try await authenticationMaterial(for: target),
+            hostKeyVerifier: SSHHostKeyVerifier(host: target.host),
+            initialTerminalSize: initialTerminalSize
+        )
+        return try await bridge.connect(
+            configuration: configuration,
+            serverID: target.serverID,
+            serverName: target.serverName
+        )
+    }
+
+    func presentableError(from error: any Error) -> any Error {
+        if error is SSHServiceError {
+            return error
+        }
+
+        if let localizedError = error as? any LocalizedError,
+           let description = localizedError.errorDescription {
+            return SSHServiceError.sshLibraryError(description)
+        }
+
+        return SSHServiceError.sshLibraryError(error.localizedDescription)
     }
 }
 
@@ -458,6 +815,12 @@ enum SSHServiceError: LocalizedError {
     case hostKeyMismatch
     case unexpectedChannelType
     case noCredential
+    case unsupportedAuthenticationMethod(requested: String, available: NIOSSHAvailableUserAuthenticationMethods)
+    case authenticationRejected(method: String)
+    case authenticationTimedOut
+    case connectionClosedBeforeAuthentication
+    case sshLibraryError(String)
+    case backendUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -467,7 +830,31 @@ enum SSHServiceError: LocalizedError {
             return "Unexpected SSH channel type received."
         case .noCredential:
             return "No credential is stored for this server."
+        case .unsupportedAuthenticationMethod(let requested, let available):
+            return "The server does not allow \(requested) authentication. Available methods: \(available.readableDescription)."
+        case .authenticationRejected(let method):
+            return "SSH \(method) authentication was rejected by the server. Verify the credential and server SSH settings."
+        case .authenticationTimedOut:
+            return "SSH authentication timed out before the session became active."
+        case .connectionClosedBeforeAuthentication:
+            return "The SSH connection closed before authentication completed."
+        case .sshLibraryError(let message):
+            return message
+        case .backendUnavailable(let message):
+            return message
         }
+    }
+}
+
+private extension NIOSSHAvailableUserAuthenticationMethods {
+    var readableDescription: String {
+        let knownMethods = [
+            (Self.publicKey, "public key"),
+            (Self.password, "password"),
+            (Self.hostBased, "host based"),
+        ]
+        let names = knownMethods.compactMap { contains($0.0) ? $0.1 : nil }
+        return names.isEmpty ? "none" : names.joined(separator: ", ")
     }
 }
 
