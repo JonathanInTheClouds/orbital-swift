@@ -116,10 +116,12 @@ struct TerminalWebView: UIViewRepresentable {
                 session.write(data)
 
             case "terminalResize":
-                // Future: send PTY resize request to SSH channel
-                // guard let dict = message.body as? [String: Int],
-                //       let cols = dict["cols"], let rows = dict["rows"] else { return }
-                break
+                guard let dict = message.body as? [String: Int],
+                      let cols = dict["cols"],
+                      let rows = dict["rows"],
+                      cols > 0,
+                      rows > 0 else { return }
+                session.resize(to: SSHTerminalSize(columns: cols, rows: rows))
 
             default:
                 break

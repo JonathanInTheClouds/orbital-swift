@@ -8,9 +8,27 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(SSHService.self) private var sshService
+
     var body: some View {
         NavigationStack {
             List {
+                Section("SSH") {
+                    LabeledContent("Engine") {
+                        Text(sshService.backendDisplayName)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LabeledContent("libssh") {
+                        Text(LibsshBridgeLoader.isNativeBridgeAvailable ? "Ready" : "Pending")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(SSHBackendKind.libssh.statusDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Security") {
                     NavigationLink {
                         CredentialVaultView()
@@ -43,4 +61,5 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
+        .environment(SSHService.shared)
 }
