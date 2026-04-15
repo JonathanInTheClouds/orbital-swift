@@ -217,6 +217,23 @@ struct ServerMetricsDashboardView: View {
         return NetworkRate(current: latestSnapshot, previous: previousSnapshot)
     }
 
+    private var featuredContainers: [ContainerStatusSnapshot] {
+        guard let latestSnapshot else { return [] }
+
+        return latestSnapshot.containerStatuses
+            .sorted(by: containerPrioritySort)
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private var runningContainers: [ContainerStatusSnapshot] {
+        guard let latestSnapshot else { return [] }
+
+        return latestSnapshot.containerStatuses
+            .filter(\.isRunning)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private var orderedSections: [MetricDashboardSection] {
         MetricDashboardSection.sanitized(from: server.metricsSectionOrder)
     }
@@ -226,6 +243,8 @@ struct ServerMetricsDashboardView: View {
             switch section {
             case .history:
                 return trendSamples.count > 1
+            case .containers:
+                return latestSnapshot?.hasContainerRuntime == true
             case .disks:
                 return !availableDiskRows.isEmpty
             default:
@@ -337,6 +356,9 @@ struct ServerMetricsDashboardView: View {
 
         case .history:
             historyPanel
+
+        case .containers:
+            containersPanel(for: latestSnapshot)
 
         case .system:
             systemPanel(for: latestSnapshot)
@@ -463,6 +485,95 @@ struct ServerMetricsDashboardView: View {
                 HStack(spacing: 14) {
                     legendItem(color: .orange, label: "CPU")
                     legendItem(color: .cyan, label: "Memory")
+                }
+            }
+        }
+    }
+
+    private func containersPanel(for snapshot: MetricSnapshot) -> some View {
+        MetricPanel(
+            title: "Containers",
+            subtitle: containerPanelSubtitle(for: snapshot)
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 10) {
+                    statusChip(
+                        title: snapshot.containerRuntime.displayName,
+                        value: snapshot.containerRuntimeReachable ? "Reachable" : "Unavailable",
+                        tint: snapshot.containerRuntimeReachable ? .blue : .orange
+                    )
+
+                    statusChip(
+                        title: "Total",
+                        value: "\(snapshot.containerStatuses.count)",
+                        tint: .secondary
+                    )
+
+                    Spacer(minLength: 0)
+
+                    NavigationLink {
+                        ServerContainerListView(server: server)
+                    } label: {
+                        Text("See More")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(serverAccentColor(server.colorTag))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(serverAccentColor(server.colorTag).opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                LazyVGrid(columns: gaugeColumns, spacing: 10) {
+                    MetricSummaryChip(
+                        label: "Running",
+                        value: "\(snapshot.runningContainerCount)",
+                        caption: "active containers"
+                    )
+                    MetricSummaryChip(
+                        label: "Exited",
+                        value: "\(snapshot.exitedContainerCount)",
+                        caption: "stopped or dead"
+                    )
+                    MetricSummaryChip(
+                        label: "Restarting",
+                        value: "\(snapshot.restartingContainerCount)",
+                        caption: "recovering now"
+                    )
+                    MetricSummaryChip(
+                        label: "Paused",
+                        value: "\(snapshot.pausedContainerCount)",
+                        caption: snapshot.unhealthyContainerCount > 0
+                        ? "\(snapshot.unhealthyContainerCount) unhealthy"
+                        : "healthy set"
+                    )
+                }
+
+                if !snapshot.containerRuntimeReachable {
+                    Text("\(snapshot.containerRuntime.displayName) is installed but the current session could not query it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if runningContainers.isEmpty {
+                    Text(snapshot.containerStatuses.isEmpty
+                         ? "No containers detected on this server."
+                         : "No running containers right now.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(runningContainers.prefix(3), id: \.self) { container in
+                            NavigationLink {
+                                ServerContainerDetailView(
+                                    server: server,
+                                    runtime: snapshot.containerRuntime,
+                                    container: container
+                                )
+                            } label: {
+                                containerRow(container)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
             }
         }
@@ -626,7 +737,7 @@ struct ServerMetricsDashboardView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background {
             Capsule(style: .continuous)
@@ -642,6 +753,52 @@ struct ServerMetricsDashboardView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func containerRow(_ container: ContainerStatusSnapshot) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(containerTint(for: container))
+                .frame(width: 10, height: 10)
+                .padding(.top, 5)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(container.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    Text(containerStatusLabel(for: container))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(containerTint(for: container))
+                }
+
+                Text(container.image)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(container.status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.04))
         }
     }
 
@@ -682,6 +839,52 @@ struct ServerMetricsDashboardView: View {
     private func formatThroughput(_ bytesPerSecond: Double) -> String {
         let intValue = Int64(bytesPerSecond.rounded())
         return "\(Self.byteFormatter.string(fromByteCount: intValue))/s"
+    }
+
+    private func containerPanelSubtitle(for snapshot: MetricSnapshot) -> String {
+        if !snapshot.containerRuntimeReachable {
+            return "\(snapshot.containerRuntime.displayName) detected but unavailable to the current user"
+        }
+
+        return snapshot.containerStatuses.isEmpty
+        ? "\(snapshot.containerRuntime.displayName) is available, but no containers were found"
+        : "\(runningContainers.count) running of \(snapshot.containerStatuses.count) total \(snapshot.containerRuntime.displayName.lowercased()) containers"
+    }
+
+    private func containerPrioritySort(_ lhs: ContainerStatusSnapshot, _ rhs: ContainerStatusSnapshot) -> Bool {
+        let lhsPriority = containerPriority(for: lhs)
+        let rhsPriority = containerPriority(for: rhs)
+
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
+
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
+
+    private func containerPriority(for container: ContainerStatusSnapshot) -> Int {
+        if container.isUnhealthy { return 0 }
+        if container.isRestarting { return 1 }
+        if container.isExited { return 2 }
+        if container.isPaused { return 3 }
+        if container.isRunning { return 4 }
+        return 5
+    }
+
+    private func containerTint(for container: ContainerStatusSnapshot) -> Color {
+        if container.isUnhealthy { return .red }
+        if container.isRestarting { return .orange }
+        if container.isExited { return .secondary }
+        if container.isPaused { return .yellow }
+        if container.isRunning { return .green }
+        return .blue
+    }
+
+    private func containerStatusLabel(for container: ContainerStatusSnapshot) -> String {
+        if let healthLabel = container.healthLabel {
+            return healthLabel
+        }
+        return container.state.capitalized
     }
 
     private var diskPanelSubtitle: String {
@@ -772,6 +975,7 @@ private enum MetricDashboardSection: String, CaseIterable, Identifiable {
     case overview
     case vitals
     case history
+    case containers
     case system
     case disks
 
@@ -785,6 +989,8 @@ private enum MetricDashboardSection: String, CaseIterable, Identifiable {
             return "Vitals"
         case .history:
             return "History"
+        case .containers:
+            return "Containers"
         case .system:
             return "System Detail"
         case .disks:
@@ -800,6 +1006,8 @@ private enum MetricDashboardSection: String, CaseIterable, Identifiable {
             return "CPU, memory, and primary disk gauges"
         case .history:
             return "Recent CPU and memory trend lines"
+        case .containers:
+            return "Docker or Podman runtime and container health"
         case .system:
             return "Load, swap, interfaces, and timestamp"
         case .disks:
@@ -815,6 +1023,8 @@ private enum MetricDashboardSection: String, CaseIterable, Identifiable {
             return "gauge.with.dots.needle.33percent"
         case .history:
             return "chart.line.uptrend.xyaxis"
+        case .containers:
+            return "shippingbox"
         case .system:
             return "cpu"
         case .disks:
