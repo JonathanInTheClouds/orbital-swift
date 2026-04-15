@@ -160,6 +160,9 @@ struct ServerDetailView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
+        .refreshable {
+            await pollNow()
+        }
         .background(backgroundGradient)
         .navigationTitle(server.name)
         .navigationBarTitleDisplayMode(.inline)
