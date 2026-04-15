@@ -5,102 +5,162 @@
 //  Created by Jonathan on 4/13/26.
 //
 
+import SwiftData
 import SwiftUI
 
 struct ServerDetailView: View {
     let server: Server
 
     @Environment(SSHService.self) private var sshService
+    @Environment(MetricsPollingService.self) private var metricsPollingService
     @State private var showEditServer = false
     @State private var connectError: IdentifiableError?
     @State private var navigateToTerminal = false
+    @State private var pollingInterval: Double = 30
 
     var body: some View {
-        List {
-            // Header card
-            Section {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(accentColor.opacity(0.15))
-                            .frame(width: 52, height: 52)
-                        Image(systemName: "server.rack")
-                            .font(.title2)
-                            .foregroundStyle(accentColor)
+        ScrollView {
+            VStack(spacing: 16) {
+                headerCard
+
+                ServerMetricsDashboardView(server: server)
+
+                DetailCardSection(title: "Connection", subtitle: "Transport and authentication settings") {
+                    VStack(spacing: 14) {
+                        LabeledRow(label: "Host", value: server.host)
+                        LabeledRow(label: "Port", value: "\(server.port)")
+                        LabeledRow(label: "Username", value: server.username)
+                        LabeledRow(label: "Auth", value: server.authMethod.displayName)
+
+                        if let jumpHost = server.jumpHostRef, !jumpHost.isEmpty {
+                            LabeledRow(label: "Jump Host", value: jumpHost)
+                        }
                     }
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(server.name)
-                            .font(.headline)
-                        Text("\(server.username)@\(server.host):\(server.port)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    StatusBadge(status: currentStatus)
                 }
-                .padding(.vertical, 4)
-            }
 
-            // Connection info
-            Section("Connection") {
-                LabeledRow(label: "Host", value: server.host)
-                LabeledRow(label: "Port", value: "\(server.port)")
-                LabeledRow(label: "Username", value: server.username)
-                LabeledRow(label: "Auth", value: server.authMethod.displayName)
-                if let jumpHost = server.jumpHostRef, !jumpHost.isEmpty {
-                    LabeledRow(label: "Jump Host", value: jumpHost)
-                }
-            }
+                if !server.tags.isEmpty || !server.notes.isEmpty {
+                    DetailCardSection(title: "Details", subtitle: "Metadata and notes for this node") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if !server.tags.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Tags")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
 
-            // Metadata
-            if !server.tags.isEmpty || !server.notes.isEmpty {
-                Section("Details") {
-                    if !server.tags.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Tags")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            FlowLayout(spacing: 6) {
-                                ForEach(server.tags, id: \.self) { tag in
-                                    Text(tag)
-                                        .font(.caption)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(.quaternary, in: Capsule())
+                                    FlowLayout(spacing: 6) {
+                                        ForEach(server.tags, id: \.self) { tag in
+                                            Text(tag)
+                                                .font(.caption.weight(.medium))
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 5)
+                                                .background(accentColor.opacity(0.12), in: Capsule())
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !server.notes.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Notes")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text(server.notes)
+                                        .font(.subheadline)
                                 }
                             }
                         }
                     }
-                    if !server.notes.isEmpty {
-                        LabeledRow(label: "Notes", value: server.notes)
+                }
+
+                DetailCardSection(title: "Monitoring", subtitle: "Polling cadence and collection health") {
+                    VStack(spacing: 14) {
+                        VStack(spacing: 12) {
+                            LabeledRow(label: "Polling", value: isPolling ? "Active" : "Stopped")
+                            LabeledRow(label: "Interval", value: "\(Int(pollingInterval))s")
+
+                            if let lastRecordedAt {
+                                LabeledRow(
+                                    label: "Last Snapshot",
+                                    value: lastRecordedAt.formatted(date: .abbreviated, time: .standard)
+                                )
+                            }
+
+                            if let lastError {
+                                LabeledRow(label: "Last Error", value: lastError)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+
+                        Stepper(value: $pollingInterval, in: 5 ... 300, step: 5) {
+                            Text("Poll Every \(Int(pollingInterval)) Seconds")
+                                .font(.subheadline.weight(.medium))
+                        }
+
+                        VStack(spacing: 10) {
+                            Button {
+                                metricsPollingService.startPolling(server: server, every: pollingInterval)
+                            } label: {
+                                Label(
+                                    isPolling ? "Restart Polling" : "Start Polling",
+                                    systemImage: "waveform.path.ecg"
+                                )
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            HStack(spacing: 10) {
+                                Button {
+                                    Task { await pollNow() }
+                                } label: {
+                                    Label("Poll Now", systemImage: "arrow.clockwise")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+
+                                if isPolling {
+                                    Button(role: .destructive) {
+                                        metricsPollingService.stopPolling(serverID: server.id)
+                                    } label: {
+                                        Label("Stop", systemImage: "stop.circle")
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                DetailCardSection(title: "Actions", subtitle: "Interactive shell and session control") {
+                    VStack(spacing: 10) {
+                        Button {
+                            Task { await connectAndOpenTerminal() }
+                        } label: {
+                            Label(
+                                currentStatus == .connected ? "Open Terminal" : "Connect & Open Terminal",
+                                systemImage: "terminal"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(currentStatus == .connecting)
+
+                        if currentStatus == .connected {
+                            Button(role: .destructive) {
+                                sshService.disconnect(serverID: server.id)
+                            } label: {
+                                Label("Disconnect", systemImage: "xmark.circle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                 }
             }
-
-            // Actions
-            Section {
-                Button {
-                    Task { await connectAndOpenTerminal() }
-                } label: {
-                    Label(
-                        currentStatus == .connected ? "Open Terminal" : "Connect & Open Terminal",
-                        systemImage: "terminal"
-                    )
-                }
-                .disabled(currentStatus == .connecting)
-
-                if currentStatus == .connected {
-                    Button(role: .destructive) {
-                        sshService.disconnect(serverID: server.id)
-                    } label: {
-                        Label("Disconnect", systemImage: "xmark.circle")
-                    }
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 20)
         }
+        .background(backgroundGradient)
         .navigationTitle(server.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -126,14 +186,103 @@ struct ServerDetailView: View {
         }
     }
 
-    // MARK: - Helpers
-
     private var currentStatus: ConnectionStatus {
         sshService.status(for: server.id)
     }
 
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(accentColor.opacity(0.14))
+                        .frame(width: 60, height: 60)
+                    Image(systemName: "server.rack")
+                        .font(.title2)
+                        .foregroundStyle(accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(server.name)
+                        .font(.title2.weight(.bold))
+
+                    Text("\(server.username)@\(server.host):\(server.port)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    if let lastSeen = server.lastSeenAt {
+                        Text("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                StatusBadge(status: currentStatus)
+            }
+
+            if !server.tags.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(server.tags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.white.opacity(0.06), in: Capsule())
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            accentColor.opacity(0.20),
+                            accentColor.opacity(0.08),
+                            Color(uiColor: .secondarySystemBackground)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                }
+        }
+    }
+
     private var accentColor: Color {
         serverAccentColor(server.colorTag)
+    }
+
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [
+                accentColor.opacity(0.10),
+                Color(uiColor: .systemBackground),
+                Color(uiColor: .systemBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+
+    private var isPolling: Bool {
+        metricsPollingService.isPolling(serverID: server.id)
+    }
+
+    private var lastRecordedAt: Date? {
+        metricsPollingService.lastRecordedAt(for: server.id)
+    }
+
+    private var lastError: String? {
+        metricsPollingService.lastError(for: server.id)
     }
 
     private func connectAndOpenTerminal() async {
@@ -146,26 +295,61 @@ struct ServerDetailView: View {
             connectError = IdentifiableError(message: error.localizedDescription)
         }
     }
-}
 
-// MARK: - LabeledRow
+    private func pollNow() async {
+        do {
+            try await metricsPollingService.pollNow(server: server)
+        } catch {
+            connectError = IdentifiableError(message: error.localizedDescription)
+        }
+    }
+}
 
 struct LabeledRow: View {
     let label: String
     let value: String
 
     var body: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             Text(label)
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
+                .font(.subheadline)
                 .multilineTextAlignment(.trailing)
         }
     }
 }
 
-// MARK: - FlowLayout
+struct DetailCardSection<Content: View>: View {
+    let title: String
+    let subtitle: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            content
+        }
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
+        }
+    }
+}
 
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
@@ -215,17 +399,61 @@ struct FlowLayout: Layout {
 }
 
 #Preview {
-    NavigationStack {
-        ServerDetailView(
-            server: Server(
-                name: "prod-web-01",
-                host: "192.168.1.100",
-                port: 22,
-                username: "admin",
-                tags: ["production", "web"],
-                notes: "Primary web server in us-east-1."
+    let container = try! ModelContainer(
+        for: Server.self,
+        MetricSnapshot.self,
+        Script.self,
+        ScriptRun.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    let context = container.mainContext
+    let server = Server(
+        name: "prod-web-01",
+        host: "192.168.1.100",
+        port: 22,
+        username: "admin",
+        tags: ["production", "web", "edge"],
+        notes: "Primary web server in us-east-1.",
+        colorTag: "teal"
+    )
+    context.insert(server)
+
+    let now = Date()
+    for offset in stride(from: 70, through: 0, by: -10) {
+        let recordedAt = now.addingTimeInterval(TimeInterval(-offset * 60))
+        let cpu = Double(35 + (offset % 25))
+        let memoryUsed = Int64(3_600_000_000 + (offset * 18_000_000))
+        let rx = Int64(2_000_000_000 + offset * 55_000_000)
+        let tx = Int64(1_200_000_000 + offset * 32_000_000)
+
+        context.insert(
+            MetricSnapshot(
+                server: server,
+                recordedAt: recordedAt,
+                cpuPercent: cpu,
+                memUsedBytes: memoryUsed,
+                memTotalBytes: 8_589_934_592,
+                swapUsedBytes: 512_000_000,
+                swapTotalBytes: 2_147_483_648,
+                diskUsages: [
+                    DiskUsage(mountPoint: "/", usedBytes: 45_000_000_000, totalBytes: 85_000_000_000),
+                    DiskUsage(mountPoint: "/data", usedBytes: 120_000_000_000, totalBytes: 200_000_000_000)
+                ],
+                networkStats: [
+                    NetworkStat(interface: "eth0", bytesIn: rx, bytesOut: tx)
+                ],
+                loadAvg1m: 0.82,
+                loadAvg5m: 0.74,
+                loadAvg15m: 0.61,
+                uptimeSeconds: 492_000
             )
         )
     }
+
+    return NavigationStack {
+        ServerDetailView(server: server)
+    }
+    .modelContainer(container)
     .environment(SSHService.shared)
+    .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
 }

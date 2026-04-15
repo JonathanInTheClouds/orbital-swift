@@ -10,7 +10,10 @@ import SwiftData
 
 @main
 struct OrbitalApp: App {
-    var sharedModelContainer: ModelContainer = {
+    let sharedModelContainer: ModelContainer
+    let metricsPollingService: MetricsPollingService
+
+    init() {
         let schema = Schema([
             Server.self,
             MetricSnapshot.self,
@@ -20,15 +23,21 @@ struct OrbitalApp: App {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            self.sharedModelContainer = container
+            self.metricsPollingService = MetricsPollingService(
+                modelContext: container.mainContext,
+                sshService: .shared
+            )
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .environment(metricsPollingService)
         }
         .modelContainer(sharedModelContainer)
     }
