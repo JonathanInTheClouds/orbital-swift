@@ -25,6 +25,11 @@ func serverAccentColor(_ colorTag: String) -> Color {
     }
 }
 
+enum ServerCardStyle: String {
+    case expanded
+    case compact
+}
+
 // MARK: - Card
 
 struct ServerCardView: View {
@@ -33,19 +38,23 @@ struct ServerCardView: View {
     let latestSnapshot: MetricSnapshot?
     let isPolling: Bool
     let lastError: String?
+    var style: ServerCardStyle = .expanded
 
     var body: some View {
+        Group {
+            switch style {
+            case .expanded:
+                expandedCard
+            case .compact:
+                compactCard
+            }
+        }
+    }
+
+    private var expandedCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(accentColor.opacity(0.16))
-                        .frame(width: 56, height: 56)
-
-                    Image(systemName: "server.rack")
-                        .font(.title3)
-                        .foregroundStyle(accentColor)
-                }
+                iconBadge(size: 56, cornerRadius: 18, iconFont: .title3)
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
@@ -126,68 +135,160 @@ struct ServerCardView: View {
                     )
                 }
             } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "waveform.path.ecg")
-                        .foregroundStyle(accentColor)
-                    Text(isPolling ? "Collecting first metrics snapshot" : "No metrics collected yet")
+                noMetricsState(font: .subheadline)
+                    .padding(14)
+                    .background {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    }
+            }
+
+            footerContent
+        }
+        .padding(18)
+        .background(cardBackground)
+    }
+
+    private var compactCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                iconBadge(size: 44, cornerRadius: 16, iconFont: .headline)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(server.name)
+                            .font(.headline.weight(.semibold))
+                            .lineLimit(1)
+
+                        Spacer(minLength: 8)
+
+                        StatusBadge(status: status)
+                    }
+
+                    Text(server.host)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(14)
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        statusPill(
+                            label: isPolling ? "Polling" : "Idle",
+                            tint: isPolling ? .green : .gray
+                        )
+
+                        if let latestSnapshot {
+                            statusPill(
+                                label: latestSnapshot.recordedAt.formatted(.relative(presentation: .named)),
+                                tint: .blue
+                            )
+                        }
+                    }
                 }
             }
 
-            if let lastError, !lastError.isEmpty {
+            if let latestSnapshot {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                    Text(lastError)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    CompactInlineMetric(
+                        label: "CPU",
+                        value: percentString(latestSnapshot.cpuPercent / 100),
+                        tint: .orange
+                    )
+
+                    CompactInlineMetric(
+                        label: "MEM",
+                        value: percentString(latestSnapshot.memoryUsageFraction),
+                        tint: .cyan
+                    )
+
+                    CompactInlineMetric(
+                        label: "DISK",
+                        value: latestSnapshot.primaryDiskUsage.map { percentString($0.usedPercent) } ?? "0%",
+                        tint: .green
+                    )
+
+                    CompactInlineMetric(
+                        label: "LOAD",
+                        value: formatLoad(latestSnapshot.loadAvg1m),
+                        tint: .indigo
+                    )
                 }
+            } else {
+                noMetricsState(font: .caption)
+            }
+
+            compactFooterContent
+        }
+        .padding(16)
+        .background(cardBackground)
+    }
+
+    @ViewBuilder
+    private var footerContent: some View {
+        if let lastError, !lastError.isEmpty {
+            errorState(lastError, lineLimit: 2)
                 .padding(12)
                 .background {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(.red.opacity(0.08))
                 }
-            } else if !server.tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(server.tags, id: \.self) { tag in
-                            Text(tag)
-                                .font(.caption2.weight(.medium))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.white.opacity(0.06), in: Capsule())
-                        }
+        } else if !server.tags.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(server.tags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.white.opacity(0.06), in: Capsule())
                     }
                 }
             }
         }
-        .padding(18)
-        .background {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            accentColor.opacity(0.18),
-                            accentColor.opacity(0.06),
-                            Color(uiColor: .secondarySystemBackground)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+    }
+
+    @ViewBuilder
+    private var compactFooterContent: some View {
+        if let lastError, !lastError.isEmpty {
+            errorState(lastError, lineLimit: 1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else if !server.tags.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(Array(server.tags.prefix(3)), id: \.self) { tag in
+                    Text(tag)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.06), in: Capsule())
                 }
+
+                if server.tags.count > 3 {
+                    Text("+\(server.tags.count - 3)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        accentColor.opacity(0.18),
+                        accentColor.opacity(0.06),
+                        Color(uiColor: .secondarySystemBackground)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+            }
     }
 
     private var accentColor: Color {
@@ -196,6 +297,40 @@ struct ServerCardView: View {
 
     private var metricColumns: [GridItem] {
         [GridItem(.adaptive(minimum: 96), spacing: 10)]
+    }
+
+    private func iconBadge(size: CGFloat, cornerRadius: CGFloat, iconFont: Font) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(accentColor.opacity(0.16))
+                .frame(width: size, height: size)
+
+            Image(systemName: "server.rack")
+                .font(iconFont)
+                .foregroundStyle(accentColor)
+        }
+    }
+
+    private func noMetricsState(font: Font) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "waveform.path.ecg")
+                .foregroundStyle(accentColor)
+            Text(isPolling ? "Collecting first metrics snapshot" : "No metrics collected yet")
+                .font(font)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    private func errorState(_ message: String, lineLimit: Int) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(lineLimit)
+        }
     }
 
     private func statusPill(label: String, tint: Color) -> some View {
@@ -240,6 +375,28 @@ struct ServerCardView: View {
         formatter.isAdaptive = true
         return formatter
     }()
+}
+
+private struct CompactInlineMetric: View {
+    let label: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(tint)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
 }
 
 private struct CompactMetricTile: View {
@@ -351,15 +508,17 @@ struct StatusBadge: View {
                 uptimeSeconds: 182_000
             ),
             isPolling: true,
-            lastError: nil
+            lastError: nil,
+            style: .expanded
         )
 
         ServerCardView(
-            server: Server(name: "staging-db", host: "staging.example.com", port: 2222, username: "deploy", tags: ["staging", "database"], colorTag: "orange"),
+            server: Server(name: "staging-db", host: "staging.example.com", port: 2222, username: "deploy", tags: ["staging", "database", "postgres"], colorTag: "orange"),
             status: .error("Host unreachable"),
             latestSnapshot: nil,
             isPolling: true,
-            lastError: "Remote metrics command exited with status 255."
+            lastError: "Remote metrics command exited with status 255.",
+            style: .compact
         )
     }
     .padding()
