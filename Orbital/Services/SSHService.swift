@@ -601,13 +601,19 @@ final class SSHService {
         on server: Server
     ) async throws -> SSHCommandResult {
         do {
-            return try await commandPool.run(
+            let result = try await commandPool.run(
                 command: command,
                 on: SSHConnectionTarget(server: server),
                 using: backend
             )
+            statuses[server.id] = .connected
+            return result
         } catch {
-            throw backend.presentableError(from: error)
+            let presentableError = backend.presentableError(from: error)
+            if sessions[server.id] == nil {
+                statuses[server.id] = .error(presentableError.localizedDescription)
+            }
+            throw presentableError
         }
     }
 
@@ -619,6 +625,13 @@ final class SSHService {
         statuses[serverID] = .disconnected
         Task {
             await commandPool.disconnect(serverID: serverID)
+        }
+    }
+
+    func disconnectCommandTransport(serverID: UUID) async {
+        await commandPool.disconnect(serverID: serverID)
+        if sessions[serverID] == nil {
+            statuses[serverID] = .disconnected
         }
     }
 }

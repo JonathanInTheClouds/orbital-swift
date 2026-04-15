@@ -11,6 +11,7 @@ import SwiftData
 struct ServerListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SSHService.self) private var sshService
+    @Environment(MetricsPollingService.self) private var metricsPollingService
 
     @Query(sort: \Server.name) private var servers: [Server]
 
@@ -44,6 +45,12 @@ struct ServerListView: View {
             }
             .sheet(item: $serverToEdit) { server in
                 AddEditServerView(server: server)
+            }
+            .task {
+                metricsPollingService.ensureAutomaticPolling(for: servers)
+            }
+            .onChange(of: serverIDs) { _, _ in
+                metricsPollingService.ensureAutomaticPolling(for: servers)
             }
             .alert("Connection Error", isPresented: Binding(
                 get: { connectError != nil },
@@ -155,6 +162,10 @@ struct ServerListView: View {
             $0.host.lowercased().contains(query) ||
             $0.tags.contains { $0.lowercased().contains(query) }
         }
+    }
+
+    private var serverIDs: [UUID] {
+        servers.map(\.id)
     }
 
     private func connectToServer(_ server: Server) async {
