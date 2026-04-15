@@ -139,6 +139,9 @@ final class MetricsPollingService {
             swapTotalBytes: payload.swapTotalBytes,
             diskUsages: payload.diskUsages,
             networkStats: payload.networkStats,
+            containerRuntime: payload.containerRuntime,
+            containerRuntimeReachable: payload.containerRuntimeReachable,
+            containerStatuses: payload.containerStatuses,
             loadAvg1m: payload.loadAvg1m,
             loadAvg5m: payload.loadAvg5m,
             loadAvg15m: payload.loadAvg15m,
@@ -166,6 +169,9 @@ private extension MetricsPollingService {
         var swapTotalBytes: Int64 = 0
         var diskUsages: [DiskUsage] = []
         var networkStats: [NetworkStat] = []
+        var containerRuntime: ContainerRuntimeKind = .none
+        var containerRuntimeReachable: Bool = false
+        var containerStatuses: [ContainerStatusSnapshot] = []
         var loadAvg1m: Double = 0
         var loadAvg5m: Double = 0
         var loadAvg15m: Double = 0
@@ -237,6 +243,36 @@ private extension MetricsPollingService {
         set -- $stats
         echo "NET $iface $1 $9"
     done < /proc/net/dev
+
+    container_runtime=none
+    container_reachable=0
+
+    if command -v docker >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
+            container_runtime=docker
+            container_reachable=1
+        else
+            container_runtime=docker
+        fi
+    fi
+
+    if [ "$container_reachable" -eq 0 ] && command -v podman >/dev/null 2>&1; then
+        if podman info >/dev/null 2>&1; then
+            container_runtime=podman
+            container_reachable=1
+        elif [ "$container_runtime" = "none" ]; then
+            container_runtime=podman
+        fi
+    fi
+
+    echo "CONTAINER_RUNTIME|$container_runtime|$container_reachable"
+
+    if [ "$container_reachable" -eq 1 ]; then
+        "$container_runtime" ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}' | while IFS= read -r container_line; do
+            [ -n "$container_line" ] || continue
+            echo "CONTAINER|$container_line"
+        done
+    fi
     """
 
     static func parseMetricsPayload(from output: String) throws -> ParsedMetricsPayload {
@@ -245,6 +281,34 @@ private extension MetricsPollingService {
         for rawLine in output.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
+
+            if line.hasPrefix("CONTAINER_RUNTIME|") {
+                let parts = line.split(separator: "|", omittingEmptySubsequences: false)
+                guard parts.count >= 3 else {
+                    throw MetricsPollingError.invalidPayload("Invalid container runtime line: \(line)")
+                }
+
+                payload.containerRuntime = ContainerRuntimeKind(rawValue: String(parts[1])) ?? .none
+                payload.containerRuntimeReachable = parts[2] == "1"
+                continue
+            }
+
+            if line.hasPrefix("CONTAINER|") {
+                let parts = line.split(separator: "|", maxSplits: 4, omittingEmptySubsequences: false)
+                guard parts.count >= 5 else {
+                    throw MetricsPollingError.invalidPayload("Invalid container line: \(line)")
+                }
+
+                payload.containerStatuses.append(
+                    ContainerStatusSnapshot(
+                        name: String(parts[1]),
+                        image: String(parts[2]),
+                        state: String(parts[3]),
+                        status: String(parts[4])
+                    )
+                )
+                continue
+            }
 
             let components = line.split(separator: " ", omittingEmptySubsequences: true)
             guard let prefix = components.first else { continue }
