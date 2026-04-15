@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		240C314A2F8DD2850060B73F /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 240C31492F8DD2850060B73F /* NIOSSH */; };
+		31A0E3014CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +32,7 @@
 		240C30EB2F8DC61B0060B73F /* Orbital.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orbital.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		240C30FA2F8DC61E0060B73F /* OrbitalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbitalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		240C31042F8DC61E0060B73F /* OrbitalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbitalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/Build/LibsshVendor.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -56,6 +58,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				31A0E3014CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework in Frameworks */,
 				240C314A2F8DD2850060B73F /* NIOSSH in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -80,6 +83,7 @@
 		240C30E22F8DC61B0060B73F = {
 			isa = PBXGroup;
 			children = (
+				31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */,
 				240C30ED2F8DC61B0060B73F /* Orbital */,
 				240C30FD2F8DC61E0060B73F /* OrbitalTests */,
 				240C31072F8DC61E0060B73F /* OrbitalUITests */,

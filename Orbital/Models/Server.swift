@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-enum AuthMethod: String, Codable, CaseIterable {
+enum AuthMethod: String, Codable, CaseIterable, Sendable {
     case password = "password"
     case privateKey = "privateKey"
 
@@ -18,6 +18,11 @@ enum AuthMethod: String, Codable, CaseIterable {
         case .privateKey: return "Private Key"
         }
     }
+}
+
+enum VolumeSelectionMode: String, Codable, CaseIterable, Sendable {
+    case all
+    case custom
 }
 
 @Model
@@ -35,6 +40,10 @@ final class Server {
     var notes: String
     /// Named color used to accent the card (e.g. "blue", "green", "red")
     var colorTag: String
+    var volumeSelectionMode: VolumeSelectionMode
+    var selectedVolumeMountPoints: [String]
+    var detailSectionOrder: [String]
+    var metricsSectionOrder: [String]
     var createdAt: Date
     var lastSeenAt: Date?
 
@@ -50,6 +59,10 @@ final class Server {
         tags: [String] = [],
         notes: String = "",
         colorTag: String = "blue",
+        volumeSelectionMode: VolumeSelectionMode = .all,
+        selectedVolumeMountPoints: [String] = [],
+        detailSectionOrder: [String] = ["metrics", "connection", "details", "monitoring", "actions"],
+        metricsSectionOrder: [String] = ["overview", "vitals", "history", "containers", "system", "disks"],
         createdAt: Date = Date(),
         lastSeenAt: Date? = nil
     ) {
@@ -64,6 +77,10 @@ final class Server {
         self.tags = tags
         self.notes = notes
         self.colorTag = colorTag
+        self.volumeSelectionMode = volumeSelectionMode
+        self.selectedVolumeMountPoints = selectedVolumeMountPoints
+        self.detailSectionOrder = detailSectionOrder
+        self.metricsSectionOrder = metricsSectionOrder
         self.createdAt = createdAt
         self.lastSeenAt = lastSeenAt
     }

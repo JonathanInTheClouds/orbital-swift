@@ -6,7 +6,6 @@
 //
 
 import Crypto
-import NIOSSH
 import SwiftUI
 
 struct KeyManagementView: View {
@@ -241,15 +240,22 @@ private struct KeyRow: View {
 
     private func copyPublicKey() {
         Task {
-            // Load the raw 32-byte ED25519 private key, reconstruct via CryptoKit → NIOSSH
             guard let rawPrivate = await KeychainService.shared.loadIfPresent(key: key.keychainKey),
                   let cryptoKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: rawPrivate)
             else { return }
 
-            let sshKey = NIOSSHPrivateKey(ed25519Key: cryptoKey)
-            // String(openSSHPublicKey:) produces the proper "ssh-ed25519 <base64>" wire format
-            let opensshLine = String(openSSHPublicKey: sshKey.publicKey) + " orbital"
-            UIPasteboard.general.string = opensshLine
+            // Encode in OpenSSH wire format: length-prefixed algorithm name + length-prefixed key bytes
+            let pubKeyBytes = Data(cryptoKey.publicKey.rawRepresentation)
+            let algName = Data("ssh-ed25519".utf8)
+            var blob = Data()
+            var algLen = UInt32(algName.count).bigEndian
+            withUnsafeBytes(of: &algLen) { blob.append(contentsOf: $0) }
+            blob.append(algName)
+            var keyLen = UInt32(pubKeyBytes.count).bigEndian
+            withUnsafeBytes(of: &keyLen) { blob.append(contentsOf: $0) }
+            blob.append(pubKeyBytes)
+
+            UIPasteboard.general.string = "ssh-ed25519 \(blob.base64EncodedString()) orbital"
 
             await MainActor.run {
                 withAnimation { copiedKey = key.keychainKey }

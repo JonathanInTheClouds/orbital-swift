@@ -11,6 +11,18 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("SSH") {
+                    LabeledContent("Engine") {
+                        Text("libssh")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LabeledContent("Status") {
+                        Text(LibsshBridgeLoader.isNativeBridgeAvailable ? "Ready" : "Pending")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Security") {
                     NavigationLink {
                         CredentialVaultView()
