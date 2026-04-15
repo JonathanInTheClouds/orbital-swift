@@ -276,7 +276,7 @@ struct ServerMetricsDashboardView: View {
             MetricGaugeCard(
                 title: "Memory",
                 valueText: formatPercent(latestSnapshot.memoryUsageFraction),
-                subtitle: "\(formatBytes(latestSnapshot.memUsedBytes)) / \(formatBytes(latestSnapshot.memTotalBytes))",
+                subtitle: "\(formatBytes(latestSnapshot.memUsedBytes)) used\n\(formatBytes(latestSnapshot.memTotalBytes)) total",
                 fraction: latestSnapshot.memoryUsageFraction,
                 tint: .cyan,
                 icon: "memorychip"
@@ -286,7 +286,7 @@ struct ServerMetricsDashboardView: View {
                 MetricGaugeCard(
                     title: primaryDisk.mountPoint == "/" ? "Disk" : primaryDisk.mountPoint,
                     valueText: formatPercent(primaryDisk.usedPercent),
-                    subtitle: "\(formatBytes(primaryDisk.usedBytes)) / \(formatBytes(primaryDisk.totalBytes))",
+                    subtitle: "\(formatBytes(primaryDisk.usedBytes)) used\n\(formatBytes(primaryDisk.totalBytes)) total",
                     fraction: primaryDisk.usedPercent,
                     tint: .green,
                     icon: "internaldrive"
@@ -731,6 +731,8 @@ private struct MetricPanel<Content: View>: View {
 }
 
 private struct MetricGaugeCard: View {
+    private static let subtitleHeight: CGFloat = 32
+
     let title: String
     let valueText: String
     let subtitle: String
@@ -756,11 +758,15 @@ private struct MetricGaugeCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, minHeight: Self.subtitleHeight, maxHeight: Self.subtitleHeight, alignment: .topLeading)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemBackground))
