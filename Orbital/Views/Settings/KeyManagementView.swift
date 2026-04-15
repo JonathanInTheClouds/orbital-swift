@@ -17,6 +17,7 @@ struct KeyManagementView: View {
     @State private var importKeyName = ""
     @State private var error: String?
     @State private var copiedKey: String?
+    @State private var keyToDeploy: StoredKey?
 
     var body: some View {
         List {
@@ -31,7 +32,9 @@ struct KeyManagementView: View {
                 )
             } else {
                 ForEach(keys) { key in
-                    KeyRow(key: key, copiedKey: $copiedKey) {
+                    KeyRow(key: key, copiedKey: $copiedKey, onDeploy: {
+                        keyToDeploy = key
+                    }) {
                         Task { await deleteKey(key) }
                     }
                 }
@@ -61,6 +64,9 @@ struct KeyManagementView: View {
         }
         .sheet(isPresented: $showImport) {
             importSheet
+        }
+        .sheet(item: $keyToDeploy) { key in
+            DeployKeyToServerSheet(key: key)
         }
         .alert("Error", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
@@ -198,6 +204,7 @@ struct StoredKey: Identifiable {
 private struct KeyRow: View {
     let key: StoredKey
     @Binding var copiedKey: String?
+    let onDeploy: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -230,6 +237,11 @@ private struct KeyRow: View {
                 Label("Copy Public Key", systemImage: "doc.on.doc")
             }
             .tint(.accentColor)
+
+            Button(action: onDeploy) {
+                Label("Deploy to Server", systemImage: "square.and.arrow.up")
+            }
+            .tint(.green)
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
@@ -240,22 +252,11 @@ private struct KeyRow: View {
 
     private func copyPublicKey() {
         Task {
-            guard let rawPrivate = await KeychainService.shared.loadIfPresent(key: key.keychainKey),
-                  let cryptoKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: rawPrivate)
+            guard let raw = await KeychainService.shared.loadIfPresent(key: key.keychainKey),
+                  let keyString = sshPublicKeyString(fromRawEd25519Seed: raw)
             else { return }
 
-            // Encode in OpenSSH wire format: length-prefixed algorithm name + length-prefixed key bytes
-            let pubKeyBytes = Data(cryptoKey.publicKey.rawRepresentation)
-            let algName = Data("ssh-ed25519".utf8)
-            var blob = Data()
-            var algLen = UInt32(algName.count).bigEndian
-            withUnsafeBytes(of: &algLen) { blob.append(contentsOf: $0) }
-            blob.append(algName)
-            var keyLen = UInt32(pubKeyBytes.count).bigEndian
-            withUnsafeBytes(of: &keyLen) { blob.append(contentsOf: $0) }
-            blob.append(pubKeyBytes)
-
-            UIPasteboard.general.string = "ssh-ed25519 \(blob.base64EncodedString()) orbital"
+            UIPasteboard.general.string = keyString
 
             await MainActor.run {
                 withAnimation { copiedKey = key.keychainKey }
