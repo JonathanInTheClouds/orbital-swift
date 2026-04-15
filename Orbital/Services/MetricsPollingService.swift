@@ -208,12 +208,23 @@ private extension MetricsPollingService {
         printf "MEM %.0f %.0f %.0f %.0f\\n", mem_total, mem_used, swap_total, swap_used
     }' /proc/meminfo
 
-    df -kP | while IFS= read -r line; do
+    df -kPT | while IFS= read -r line; do
         set -- $line
         [ "$1" = "Filesystem" ] && continue
-        mountpoint=$6
+        fstype=$2
+        mountpoint=$7
         [ -n "$mountpoint" ] || continue
-        echo "DISK $mountpoint $(( $3 * 1024 )) $(( $2 * 1024 ))"
+        case "$fstype" in
+            tmpfs|devtmpfs|proc|sysfs|cgroup|cgroup2|mqueue|devpts|tracefs|debugfs|pstore|securityfs|configfs|overlay|squashfs|ramfs|autofs|fusectl|binfmt_misc|nsfs|hugetlbfs|rpc_pipefs|nfsd|bpf)
+                continue
+                ;;
+        esac
+        case "$mountpoint" in
+            /run|/run/*|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*)
+                continue
+                ;;
+        esac
+        echo "DISK $mountpoint $(( $4 * 1024 )) $(( $3 * 1024 ))"
     done
 
     while IFS=: read -r iface stats; do
