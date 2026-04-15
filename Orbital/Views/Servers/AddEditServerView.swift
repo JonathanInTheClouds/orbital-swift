@@ -429,7 +429,11 @@ struct AddEditServerView: View {
         .padding(.horizontal, 16)
         .padding(.top, 14)
         .padding(.bottom, 16)
-        .background(.ultraThinMaterial)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+        }
     }
 
     private var editorBackground: some View {
