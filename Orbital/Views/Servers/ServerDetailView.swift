@@ -607,6 +607,13 @@ struct FlowLayout: Layout {
                 networkStats: [
                     NetworkStat(interface: "eth0", bytesIn: rx, bytesOut: tx)
                 ],
+                containerRuntime: .docker,
+                containerRuntimeReachable: true,
+                containerStatuses: [
+                    ContainerStatusSnapshot(name: "web", image: "nginx:latest", state: "running", status: "Up 3 hours (healthy)"),
+                    ContainerStatusSnapshot(name: "worker", image: "ghcr.io/acme/worker:1.4", state: "running", status: "Up 3 hours"),
+                    ContainerStatusSnapshot(name: "postgres", image: "postgres:16", state: "exited", status: "Exited (1) 12 minutes ago")
+                ],
                 loadAvg1m: 0.82,
                 loadAvg5m: 0.74,
                 loadAvg15m: 0.61,

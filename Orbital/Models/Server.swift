@@ -62,7 +62,7 @@ final class Server {
         volumeSelectionMode: VolumeSelectionMode = .all,
         selectedVolumeMountPoints: [String] = [],
         detailSectionOrder: [String] = ["metrics", "connection", "details", "monitoring", "actions"],
-        metricsSectionOrder: [String] = ["overview", "vitals", "history", "system", "disks"],
+        metricsSectionOrder: [String] = ["overview", "vitals", "history", "containers", "system", "disks"],
         createdAt: Date = Date(),
         lastSeenAt: Date? = nil
     ) {
