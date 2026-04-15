@@ -14,6 +14,7 @@ struct ServerListView: View {
     @Environment(MetricsPollingService.self) private var metricsPollingService
 
     @Query(sort: \Server.name) private var servers: [Server]
+    @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
     @State private var showAddServer = false
     @State private var serverToEdit: Server?
@@ -29,6 +30,8 @@ struct ServerListView: View {
                     serverList
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(listBackground)
             .navigationTitle("Servers")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -73,7 +76,10 @@ struct ServerListView: View {
                 } label: {
                     ServerCardView(
                         server: server,
-                        status: sshService.status(for: server.id)
+                        status: sshService.status(for: server.id),
+                        latestSnapshot: latestSnapshot(for: server.id),
+                        isPolling: metricsPollingService.isPolling(serverID: server.id),
+                        lastError: metricsPollingService.lastError(for: server.id)
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
@@ -168,6 +174,34 @@ struct ServerListView: View {
         servers.map(\.id)
     }
 
+    private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
+        var results: [UUID: MetricSnapshot] = [:]
+
+        for snapshot in snapshots {
+            guard let serverID = snapshot.server?.id, results[serverID] == nil else { continue }
+            results[serverID] = snapshot
+        }
+
+        return results
+    }
+
+    private var listBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(uiColor: .systemBackground),
+                .teal.opacity(0.06),
+                Color(uiColor: .systemBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+
+    private func latestSnapshot(for serverID: UUID) -> MetricSnapshot? {
+        latestSnapshotByServerID[serverID]
+    }
+
     private func connectToServer(_ server: Server) async {
         do {
             _ = try await sshService.connect(to: server)
@@ -191,7 +225,14 @@ struct IdentifiableError: Identifiable {
 }
 
 #Preview {
-    ServerListView()
-        .modelContainer(for: [Server.self], inMemory: true)
+    let container = try! ModelContainer(
+        for: Server.self,
+        MetricSnapshot.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+
+    return ServerListView()
+        .modelContainer(container)
         .environment(SSHService.shared)
+        .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
 }
