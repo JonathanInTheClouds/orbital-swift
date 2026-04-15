@@ -16,6 +16,7 @@ struct ServerMetricsDashboardView: View {
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @Query private var snapshots: [MetricSnapshot]
     @State private var showReorderMetrics = false
+    @State private var showVolumeSelector = false
 
     init(server: Server) {
         self.server = server
@@ -77,6 +78,66 @@ struct ServerMetricsDashboardView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showVolumeSelector) {
+            NavigationStack {
+                List {
+                    Section {
+                        Button {
+                            selectAllVolumes()
+                        } label: {
+                            HStack {
+                                Label("All Volumes", systemImage: "square.stack.3d.up")
+                                Spacer()
+                                if server.volumeSelectionMode == .all {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(serverAccentColor(server.colorTag))
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } footer: {
+                        Text("Automatically include all discovered volumes, including new ones found later.")
+                    }
+
+                    Section {
+                        ForEach(availableVolumeMountPoints, id: \.self) { mountPoint in
+                            Button {
+                                toggleVolumeSelection(mountPoint)
+                            } label: {
+                                HStack {
+                                    Text(mountPoint)
+                                    Spacer()
+                                    Image(systemName: isVolumeSelected(mountPoint) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(isVolumeSelected(mountPoint) ? serverAccentColor(server.colorTag) : .secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } header: {
+                        Text("Custom Selection")
+                    } footer: {
+                        Text("Choose exactly which volumes appear in the disk cards and primary disk gauge.")
+                    }
+                }
+                .navigationTitle("Storage Volumes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") {
+                            showVolumeSelector = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Clear") {
+                            clearVolumeSelection()
+                        }
+                        .disabled(server.volumeSelectionMode == .custom && server.selectedVolumeMountPoints.isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     private var latestSnapshot: MetricSnapshot? {
@@ -118,7 +179,7 @@ struct ServerMetricsDashboardView: View {
         }
     }
 
-    private var diskRows: [DiskUsage] {
+    private var availableDiskRows: [DiskUsage] {
         guard let latestSnapshot else { return [] }
 
         return latestSnapshot.diskUsages.sorted {
@@ -126,6 +187,27 @@ struct ServerMetricsDashboardView: View {
             if $1.mountPoint == "/" { return false }
             return $0.usedPercent > $1.usedPercent
         }
+    }
+
+    private var availableVolumeMountPoints: [String] {
+        availableDiskRows.map(\.mountPoint)
+    }
+
+    private var selectedVolumeMountPoints: Set<String> {
+        switch server.volumeSelectionMode {
+        case .all:
+            return Set(availableVolumeMountPoints)
+        case .custom:
+            return Set(server.selectedVolumeMountPoints)
+        }
+    }
+
+    private var diskRows: [DiskUsage] {
+        availableDiskRows.filter { selectedVolumeMountPoints.contains($0.mountPoint) }
+    }
+
+    private var primaryDisplayedDiskUsage: DiskUsage? {
+        diskRows.first(where: { $0.mountPoint == "/" }) ?? diskRows.first
     }
 
     private var latestNetworkRate: NetworkRate? {
@@ -143,7 +225,7 @@ struct ServerMetricsDashboardView: View {
             case .history:
                 return trendSamples.count > 1
             case .disks:
-                return !diskRows.isEmpty
+                return !availableDiskRows.isEmpty
             default:
                 return true
             }
@@ -282,7 +364,7 @@ struct ServerMetricsDashboardView: View {
                 icon: "memorychip"
             )
 
-            if let primaryDisk = latestSnapshot.primaryDiskUsage {
+            if let primaryDisk = primaryDisplayedDiskUsage {
                 MetricGaugeCard(
                     title: primaryDisk.mountPoint == "/" ? "Disk" : primaryDisk.mountPoint,
                     valueText: formatPercent(primaryDisk.usedPercent),
@@ -417,37 +499,86 @@ struct ServerMetricsDashboardView: View {
     }
 
     private var diskPanel: some View {
-        MetricPanel(title: "Disk Usage", subtitle: "Busy filesystems sorted by pressure") {
-            VStack(spacing: 12) {
-                ForEach(diskRows.prefix(4), id: \.mountPoint) { disk in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(disk.mountPoint)
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text(formatPercent(disk.usedPercent))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(disk.usedPercent > 0.85 ? .red : .primary)
-                        }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Disk Usage")
+                        .font(.headline)
+                    Text(diskPanelSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
-                        ProgressView(value: min(max(disk.usedPercent, 0), 1))
-                            .tint(disk.usedPercent > 0.85 ? .red : .green)
+                Spacer()
 
-                        HStack {
-                            Text("\(formatBytes(disk.usedBytes)) used")
-                            Spacer()
-                            Text("\(formatBytes(disk.totalBytes)) total")
-                        }
+                Button {
+                    showVolumeSelector = true
+                } label: {
+                    Label("Volumes", systemImage: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(serverAccentColor(server.colorTag).opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if diskRows.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No Volumes Selected")
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("Choose one or more storage volumes to show disk metrics for this server.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    }
-                    .padding(14)
-                    .background {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(diskRows.prefix(4), id: \.mountPoint) { disk in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(disk.mountPoint)
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text(formatPercent(disk.usedPercent))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(disk.usedPercent > 0.85 ? .red : .primary)
+                            }
+
+                            ProgressView(value: min(max(disk.usedPercent, 0), 1))
+                                .tint(disk.usedPercent > 0.85 ? .red : .green)
+
+                            HStack {
+                                Text("\(formatBytes(disk.usedBytes)) used")
+                                Spacer()
+                                Text("\(formatBytes(disk.totalBytes)) total")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(14)
+                        .background {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                        }
                     }
                 }
             }
+        }
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
         }
     }
 
@@ -551,6 +682,21 @@ struct ServerMetricsDashboardView: View {
         return "\(Self.byteFormatter.string(fromByteCount: intValue))/s"
     }
 
+    private var diskPanelSubtitle: String {
+        if availableDiskRows.isEmpty {
+            return "No storage volumes discovered yet"
+        }
+
+        switch server.volumeSelectionMode {
+        case .all:
+            return "Showing all \(availableDiskRows.count) discovered volumes"
+        case .custom:
+            return diskRows.isEmpty
+            ? "No volumes selected"
+            : "Showing \(diskRows.count) of \(availableDiskRows.count) selected volumes"
+        }
+    }
+
     private static let byteFormatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
@@ -576,6 +722,35 @@ struct ServerMetricsDashboardView: View {
 
     private func saveServerChanges() {
         try? modelContext.save()
+    }
+
+    private func selectAllVolumes() {
+        server.volumeSelectionMode = .all
+        saveServerChanges()
+    }
+
+    private func clearVolumeSelection() {
+        server.volumeSelectionMode = .custom
+        server.selectedVolumeMountPoints = []
+        saveServerChanges()
+    }
+
+    private func toggleVolumeSelection(_ mountPoint: String) {
+        var updated = Set(server.volumeSelectionMode == .all ? availableVolumeMountPoints : server.selectedVolumeMountPoints)
+
+        if updated.contains(mountPoint) {
+            updated.remove(mountPoint)
+        } else {
+            updated.insert(mountPoint)
+        }
+
+        server.volumeSelectionMode = .custom
+        server.selectedVolumeMountPoints = availableVolumeMountPoints.filter { updated.contains($0) }
+        saveServerChanges()
+    }
+
+    private func isVolumeSelected(_ mountPoint: String) -> Bool {
+        selectedVolumeMountPoints.contains(mountPoint)
     }
 }
 
