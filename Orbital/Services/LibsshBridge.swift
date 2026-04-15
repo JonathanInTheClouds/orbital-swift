@@ -105,7 +105,6 @@ private final class NativeLibsshClientBridge: LibsshClientBridge {
         return SSHSession(
             serverID: serverID,
             serverName: serverName,
-            backendKind: .libssh,
             transport: transport,
             outputStream: transport.outputStream
         )
