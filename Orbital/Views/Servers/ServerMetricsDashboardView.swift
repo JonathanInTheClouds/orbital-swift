@@ -765,7 +765,8 @@ private struct MetricGaugeCard: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-        .padding(.horizontal, 16)
+        .padding(.leading, 18)
+        .padding(.trailing, 14)
         .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
