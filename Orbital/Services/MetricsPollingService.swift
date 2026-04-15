@@ -14,6 +14,8 @@ private let metricsLog = Logger(subsystem: "com.orbital", category: "MetricsPoll
 @MainActor
 @Observable
 final class MetricsPollingService {
+    static let defaultPollingInterval: TimeInterval = 30
+
     private let sshService: SSHService
     private let modelContext: ModelContext
 
@@ -21,6 +23,7 @@ final class MetricsPollingService {
     private var pollingIntervals: [UUID: TimeInterval] = [:]
     private var lastRecordedAt: [UUID: Date] = [:]
     private var lastErrors: [UUID: String] = [:]
+    private var manuallyStoppedServerIDs: Set<UUID> = []
 
     init(
         modelContext: ModelContext,
@@ -29,6 +32,7 @@ final class MetricsPollingService {
         self.modelContext = modelContext
         self.sshService = sshService
     }
+
     func isPolling(serverID: UUID) -> Bool {
         pollTasks[serverID] != nil
     }
@@ -49,11 +53,12 @@ final class MetricsPollingService {
         server: Server,
         every interval: TimeInterval
     ) {
-        stopPolling(serverID: server.id)
+        stopPolling(serverID: server.id, isManual: false)
 
         let sanitizedInterval = max(interval, 5)
         pollingIntervals[server.id] = sanitizedInterval
         lastErrors[server.id] = nil
+        manuallyStoppedServerIDs.remove(server.id)
 
         pollTasks[server.id] = Task { [weak self, server] in
             guard let self else { return }
@@ -78,9 +83,34 @@ final class MetricsPollingService {
     }
 
     func stopPolling(serverID: UUID) {
+        stopPolling(serverID: serverID, isManual: true)
+    }
+
+    func ensureAutomaticPolling(for servers: [Server]) {
+        let activeServerIDs = Set(servers.map(\.id))
+
+        for serverID in Array(pollTasks.keys) where !activeServerIDs.contains(serverID) {
+            stopPolling(serverID: serverID, isManual: false)
+        }
+
+        for server in servers where !isPolling(serverID: server.id) && !manuallyStoppedServerIDs.contains(server.id) {
+            startPolling(server: server, every: pollingIntervals[server.id] ?? Self.defaultPollingInterval)
+        }
+    }
+
+    private func stopPolling(serverID: UUID, isManual: Bool) {
         pollTasks[serverID]?.cancel()
         pollTasks.removeValue(forKey: serverID)
-        pollingIntervals.removeValue(forKey: serverID)
+
+        if isManual {
+            manuallyStoppedServerIDs.insert(serverID)
+        } else {
+            manuallyStoppedServerIDs.remove(serverID)
+        }
+
+        Task {
+            await sshService.disconnectCommandTransport(serverID: serverID)
+        }
     }
 
     func pollNow(server: Server) async throws {
