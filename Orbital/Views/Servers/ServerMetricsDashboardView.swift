@@ -182,7 +182,9 @@ struct ServerMetricsDashboardView: View {
     private var availableDiskRows: [DiskUsage] {
         guard let latestSnapshot else { return [] }
 
-        return latestSnapshot.diskUsages.sorted {
+        return latestSnapshot.diskUsages
+            .filter { isSelectableVolume($0.mountPoint) }
+            .sorted {
             if $0.mountPoint == "/" { return true }
             if $1.mountPoint == "/" { return false }
             return $0.usedPercent > $1.usedPercent
@@ -751,6 +753,18 @@ struct ServerMetricsDashboardView: View {
 
     private func isVolumeSelected(_ mountPoint: String) -> Bool {
         selectedVolumeMountPoints.contains(mountPoint)
+    }
+
+    private func isSelectableVolume(_ mountPoint: String) -> Bool {
+        switch mountPoint {
+        case "/run", "/tmp", "/dev", "/proc", "/sys":
+            return false
+        default:
+            break
+        }
+
+        let excludedPrefixes = ["/run/", "/dev/", "/proc/", "/sys/"]
+        return !excludedPrefixes.contains { mountPoint.hasPrefix($0) }
     }
 }
 
