@@ -787,20 +787,3 @@ private struct MetricStatTile: View {
         }
     }
 }
-
-private extension MetricSnapshot {
-    var memoryUsageFraction: Double {
-        guard memTotalBytes > 0 else { return 0 }
-        return Double(memUsedBytes) / Double(memTotalBytes)
-    }
-
-    var swapUsageFraction: Double {
-        guard swapTotalBytes > 0 else { return 0 }
-        return Double(swapUsedBytes) / Double(swapTotalBytes)
-    }
-
-    var primaryDiskUsage: DiskUsage? {
-        diskUsages.first(where: { $0.mountPoint == "/" }) ??
-        diskUsages.max(by: { $0.totalBytes < $1.totalBytes })
-    }
-}
