@@ -19,7 +19,10 @@ struct AddEditServerView: View {
     @State private var portText = "22"
     @State private var username = ""
     @State private var authMethod: AuthMethod = .password
-    @State private var credential = ""
+    @State private var passwordCredential = ""
+    @State private var selectedKeyRef = ""
+    @State private var pastedPEM = ""
+    @State private var storedKeys: [StoredKey] = []
     @State private var jumpHostRef = ""
     @State private var tagInput = ""
     @State private var tags: [String] = []
@@ -29,6 +32,7 @@ struct AddEditServerView: View {
 
     @State private var isSaving = false
     @State private var saveError: String?
+    @State private var showAuthorizeSheet = false
 
     private var isEditing: Bool { server != nil }
     private var port: Int { Int(portText) ?? 22 }
@@ -70,6 +74,15 @@ struct AddEditServerView: View {
             }
         }
         .onAppear { populateFromServer() }
+        .task { await loadStoredKeys() }
+        .sheet(isPresented: $showAuthorizeSheet) {
+            AuthorizeKeyOnServerSheet(
+                host: host,
+                port: port,
+                username: username,
+                keyRef: selectedKeyRef
+            )
+        }
     }
 
     private var heroCard: some View {
@@ -235,38 +248,10 @@ struct AddEditServerView: View {
                         SecureInputField(
                             title: "Password",
                             prompt: "Optional if already in Keychain",
-                            text: $credential
+                            text: $passwordCredential
                         )
                     } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("Private Key (PEM)")
-                                    .font(.subheadline.weight(.semibold))
-                                Spacer()
-                                Button("Paste") {
-                                    if let text = UIPasteboard.general.string {
-                                        credential = text
-                                    }
-                                }
-                                .font(.caption.weight(.semibold))
-                            }
-
-                            TextEditor(text: $credential)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(minHeight: 180)
-                                .padding(10)
-                                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-                                }
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-
-                            Text("Paste the private key exactly as stored in PEM format.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        keyAuthSection
                     }
                 }
             }
@@ -369,7 +354,7 @@ struct AddEditServerView: View {
                                 .font(.subheadline.weight(.semibold))
                         }
 
-                        Text(method == .password ? "Use a saved password" : "Paste a PEM private key")
+                        Text(method == .password ? "Use a saved password" : "Pick a stored key or paste PEM")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -385,6 +370,129 @@ struct AddEditServerView: View {
                     }
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var keyAuthSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Stored keys picker
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Stored Keys")
+                    .font(.subheadline.weight(.semibold))
+
+                if storedKeys.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.slash")
+                            .foregroundStyle(.secondary)
+                        Text("No keys found. Go to Settings → SSH Keys to add one.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(storedKeys) { key in
+                            Button {
+                                selectedKeyRef = key.keychainKey
+                                pastedPEM = ""
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "key.fill")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(selectedKeyRef == key.keychainKey ? selectedColor : .secondary)
+                                    Text(key.name)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if selectedKeyRef == key.keychainKey {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(selectedColor)
+                                    }
+                                }
+                                .padding(14)
+                                .background(
+                                    selectedKeyRef == key.keychainKey
+                                        ? selectedColor.opacity(0.12)
+                                        : Color(uiColor: .secondarySystemBackground),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .strokeBorder(
+                                            selectedKeyRef == key.keychainKey ? selectedColor.opacity(0.45) : .clear,
+                                            lineWidth: 1
+                                        )
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            // Manual paste
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Or Paste a Key")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if !pastedPEM.isEmpty {
+                        Button("Clear") {
+                            pastedPEM = ""
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                    } else {
+                        Button("Paste") {
+                            if let text = UIPasteboard.general.string {
+                                pastedPEM = text
+                                selectedKeyRef = ""
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+
+                TextEditor(text: Binding(
+                    get: { pastedPEM },
+                    set: { newValue in
+                        pastedPEM = newValue
+                        if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            selectedKeyRef = ""
+                        }
+                    }
+                ))
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: pastedPEM.isEmpty ? 64 : 160)
+                .padding(10)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+
+                if pastedPEM.isEmpty {
+                    Text("Paste a PEM-format private key to use it directly.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Authorize button — visible when a stored key is selected and connection details are filled
+            if !selectedKeyRef.isEmpty && !host.trimmingCharacters(in: .whitespaces).isEmpty && !username.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button {
+                    showAuthorizeSheet = true
+                } label: {
+                    Label("Authorize on This Server", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
         }
     }
@@ -539,10 +647,28 @@ struct AddEditServerView: View {
         colorTag = server.colorTag
 
         if !server.credentialRef.isEmpty {
-            Task {
-                credential = (try? await KeychainService.shared.loadString(key: server.credentialRef)) ?? ""
+            if server.authMethod == .password {
+                Task {
+                    passwordCredential = (try? await KeychainService.shared.loadString(key: server.credentialRef)) ?? ""
+                }
+            } else {
+                if server.credentialRef.hasPrefix("sshkey:") {
+                    selectedKeyRef = server.credentialRef
+                } else {
+                    Task {
+                        pastedPEM = (try? await KeychainService.shared.loadString(key: server.credentialRef)) ?? ""
+                    }
+                }
             }
         }
+    }
+
+    private func loadStoredKeys() async {
+        let allKeys = (try? await KeychainService.shared.allKeys()) ?? []
+        storedKeys = allKeys
+            .filter { $0.hasPrefix("sshkey:") }
+            .map { StoredKey(keychainKey: $0, name: String($0.dropFirst("sshkey:".count))) }
+            .sorted { $0.name < $1.name }
     }
 
     private func save() async {
@@ -551,19 +677,44 @@ struct AddEditServerView: View {
         isSaving = true
         defer { isSaving = false }
 
+        // Build a server-specific key for writing new credentials (never overwrites a managed "sshkey:" entry)
         let credentialKey: String
         if let server {
-            credentialKey = server.credentialRef.isEmpty ? "server-\(server.id)" : server.credentialRef
+            let ref = server.credentialRef
+            credentialKey = (!ref.isEmpty && !ref.hasPrefix("sshkey:")) ? ref : "server-\(server.id)"
         } else {
             credentialKey = "server-\(UUID())"
         }
 
-        if !credential.isEmpty {
-            do {
-                try await KeychainService.shared.saveString(credential, key: credentialKey)
-            } catch {
-                saveError = error.localizedDescription
-                return
+        // Determine the final credentialRef and persist any new credential to keychain
+        let finalCredentialRef: String
+        if authMethod == .password {
+            if !passwordCredential.isEmpty {
+                do {
+                    try await KeychainService.shared.saveString(passwordCredential, key: credentialKey)
+                } catch {
+                    saveError = error.localizedDescription
+                    return
+                }
+                finalCredentialRef = credentialKey
+            } else {
+                // No password entered — keep existing ref (or empty for new servers)
+                finalCredentialRef = server?.credentialRef.hasPrefix("sshkey:") == true ? "" : (server?.credentialRef ?? "")
+            }
+        } else {
+            if !selectedKeyRef.isEmpty {
+                // Reference an existing managed key — no new keychain write needed
+                finalCredentialRef = selectedKeyRef
+            } else if !pastedPEM.isEmpty {
+                do {
+                    try await KeychainService.shared.saveString(pastedPEM, key: credentialKey)
+                } catch {
+                    saveError = error.localizedDescription
+                    return
+                }
+                finalCredentialRef = credentialKey
+            } else {
+                finalCredentialRef = ""
             }
         }
 
@@ -573,7 +724,7 @@ struct AddEditServerView: View {
             server.port = port
             server.username = username
             server.authMethod = authMethod
-            server.credentialRef = credential.isEmpty ? "" : credentialKey
+            server.credentialRef = finalCredentialRef
             server.jumpHostRef = jumpHostRef.isEmpty ? nil : jumpHostRef
             server.tags = tags
             server.notes = notes
@@ -585,7 +736,7 @@ struct AddEditServerView: View {
                 port: port,
                 username: username,
                 authMethod: authMethod,
-                credentialRef: credential.isEmpty ? "" : credentialKey,
+                credentialRef: finalCredentialRef,
                 jumpHostRef: jumpHostRef.isEmpty ? nil : jumpHostRef,
                 tags: tags,
                 notes: notes,
