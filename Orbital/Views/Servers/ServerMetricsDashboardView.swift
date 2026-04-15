@@ -12,8 +12,10 @@ import SwiftUI
 struct ServerMetricsDashboardView: View {
     let server: Server
 
+    @Environment(\.modelContext) private var modelContext
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @Query private var snapshots: [MetricSnapshot]
+    @State private var showReorderMetrics = false
 
     init(server: Server) {
         self.server = server
@@ -31,52 +33,49 @@ struct ServerMetricsDashboardView: View {
         Group {
             if let latestSnapshot {
                 VStack(spacing: 14) {
-                    overviewPanel(for: latestSnapshot)
-
-                    LazyVGrid(columns: gaugeColumns, spacing: 12) {
-                        MetricGaugeCard(
-                            title: "CPU",
-                            valueText: "\(Int(latestSnapshot.cpuPercent.rounded()))%",
-                            subtitle: cpuSummary(for: latestSnapshot),
-                            fraction: latestSnapshot.cpuPercent / 100,
-                            tint: .orange,
-                            icon: "cpu"
-                        )
-
-                        MetricGaugeCard(
-                            title: "Memory",
-                            valueText: formatPercent(latestSnapshot.memoryUsageFraction),
-                            subtitle: "\(formatBytes(latestSnapshot.memUsedBytes)) / \(formatBytes(latestSnapshot.memTotalBytes))",
-                            fraction: latestSnapshot.memoryUsageFraction,
-                            tint: .cyan,
-                            icon: "memorychip"
-                        )
-
-                        if let primaryDisk = latestSnapshot.primaryDiskUsage {
-                            MetricGaugeCard(
-                                title: primaryDisk.mountPoint == "/" ? "Disk" : primaryDisk.mountPoint,
-                                valueText: formatPercent(primaryDisk.usedPercent),
-                                subtitle: "\(formatBytes(primaryDisk.usedBytes)) / \(formatBytes(primaryDisk.totalBytes))",
-                                fraction: primaryDisk.usedPercent,
-                                tint: .green,
-                                icon: "internaldrive"
-                            )
-                        }
-                    }
-
-                    if trendSamples.count > 1 {
-                        historyPanel
-                    }
-
-                    systemPanel(for: latestSnapshot)
-
-                    if !diskRows.isEmpty {
-                        diskPanel
+                    ForEach(visibleSections) { section in
+                        metricsSectionView(section, latestSnapshot: latestSnapshot)
                     }
                 }
             } else {
                 emptyStatePanel
             }
+        }
+        .task {
+            persistSectionOrderIfNeeded()
+        }
+        .sheet(isPresented: $showReorderMetrics) {
+            NavigationStack {
+                List {
+                    ForEach(orderedSections) { section in
+                        HStack(spacing: 12) {
+                            Image(systemName: section.systemImage)
+                                .foregroundStyle(serverAccentColor(server.colorTag))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(section.title)
+                                Text(section.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .onMove(perform: moveSections)
+                }
+                .navigationTitle("Reorder Metrics")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") {
+                            showReorderMetrics = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        EditButton()
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -117,6 +116,23 @@ struct ServerMetricsDashboardView: View {
         return NetworkRate(current: latestSnapshot, previous: previousSnapshot)
     }
 
+    private var orderedSections: [MetricDashboardSection] {
+        MetricDashboardSection.sanitized(from: server.metricsSectionOrder)
+    }
+
+    private var visibleSections: [MetricDashboardSection] {
+        orderedSections.filter { section in
+            switch section {
+            case .history:
+                return trendSamples.count > 1
+            case .disks:
+                return !diskRows.isEmpty
+            default:
+                return true
+            }
+        }
+    }
+
     private var gaugeColumns: [GridItem] {
         [GridItem(.adaptive(minimum: 152), spacing: 12)]
     }
@@ -125,9 +141,21 @@ struct ServerMetricsDashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Health Overview")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 8) {
+                        Text("Health Overview")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        Button {
+                            showReorderMetrics = true
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down.circle")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(serverAccentColor(server.colorTag))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Reorder metrics sections")
+                    }
 
                     Text(lastUpdatedText(for: snapshot))
                         .font(.subheadline)
@@ -194,6 +222,59 @@ struct ServerMetricsDashboardView: View {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .strokeBorder(.white.opacity(0.12), lineWidth: 1)
                 }
+        }
+    }
+
+    @ViewBuilder
+    private func metricsSectionView(_ section: MetricDashboardSection, latestSnapshot: MetricSnapshot) -> some View {
+        switch section {
+        case .overview:
+            overviewPanel(for: latestSnapshot)
+
+        case .vitals:
+            vitalsPanel(for: latestSnapshot)
+
+        case .history:
+            historyPanel
+
+        case .system:
+            systemPanel(for: latestSnapshot)
+
+        case .disks:
+            diskPanel
+        }
+    }
+
+    private func vitalsPanel(for latestSnapshot: MetricSnapshot) -> some View {
+        LazyVGrid(columns: gaugeColumns, spacing: 12) {
+            MetricGaugeCard(
+                title: "CPU",
+                valueText: "\(Int(latestSnapshot.cpuPercent.rounded()))%",
+                subtitle: cpuSummary(for: latestSnapshot),
+                fraction: latestSnapshot.cpuPercent / 100,
+                tint: .orange,
+                icon: "cpu"
+            )
+
+            MetricGaugeCard(
+                title: "Memory",
+                valueText: formatPercent(latestSnapshot.memoryUsageFraction),
+                subtitle: "\(formatBytes(latestSnapshot.memUsedBytes)) / \(formatBytes(latestSnapshot.memTotalBytes))",
+                fraction: latestSnapshot.memoryUsageFraction,
+                tint: .cyan,
+                icon: "memorychip"
+            )
+
+            if let primaryDisk = latestSnapshot.primaryDiskUsage {
+                MetricGaugeCard(
+                    title: primaryDisk.mountPoint == "/" ? "Disk" : primaryDisk.mountPoint,
+                    valueText: formatPercent(primaryDisk.usedPercent),
+                    subtitle: "\(formatBytes(primaryDisk.usedBytes)) / \(formatBytes(primaryDisk.totalBytes))",
+                    fraction: primaryDisk.usedPercent,
+                    tint: .green,
+                    icon: "internaldrive"
+                )
+            }
         }
     }
 
@@ -337,8 +418,20 @@ struct ServerMetricsDashboardView: View {
 
     private var emptyStatePanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("No Metrics Yet")
-                .font(.title3.weight(.semibold))
+            HStack(spacing: 8) {
+                Text("No Metrics Yet")
+                    .font(.title3.weight(.semibold))
+
+                Button {
+                    showReorderMetrics = true
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(serverAccentColor(server.colorTag))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reorder metrics sections")
+            }
 
             Text("Start polling or run a manual sample to populate the dashboard for this server.")
                 .font(.subheadline)
@@ -431,6 +524,91 @@ struct ServerMetricsDashboardView: View {
         formatter.isAdaptive = true
         return formatter
     }()
+
+    private func moveSections(from source: IndexSet, to destination: Int) {
+        var updatedOrder = orderedSections
+        updatedOrder.move(fromOffsets: source, toOffset: destination)
+        server.metricsSectionOrder = updatedOrder.map(\.rawValue)
+        saveServerChanges()
+    }
+
+    private func persistSectionOrderIfNeeded() {
+        let normalizedOrder = orderedSections.map(\.rawValue)
+        guard server.metricsSectionOrder != normalizedOrder else { return }
+        server.metricsSectionOrder = normalizedOrder
+        saveServerChanges()
+    }
+
+    private func saveServerChanges() {
+        try? modelContext.save()
+    }
+}
+
+private enum MetricDashboardSection: String, CaseIterable, Identifiable {
+    case overview
+    case vitals
+    case history
+    case system
+    case disks
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview:
+            return "Overview"
+        case .vitals:
+            return "Vitals"
+        case .history:
+            return "History"
+        case .system:
+            return "System Detail"
+        case .disks:
+            return "Disks"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .overview:
+            return "Top summary and connection health"
+        case .vitals:
+            return "CPU, memory, and primary disk gauges"
+        case .history:
+            return "Recent CPU and memory trend lines"
+        case .system:
+            return "Load, swap, interfaces, and timestamp"
+        case .disks:
+            return "Filesystem pressure details"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview:
+            return "rectangle.grid.2x2"
+        case .vitals:
+            return "gauge.with.dots.needle.33percent"
+        case .history:
+            return "chart.line.uptrend.xyaxis"
+        case .system:
+            return "cpu"
+        case .disks:
+            return "internaldrive"
+        }
+    }
+
+    static func sanitized(from rawValues: [String]) -> [MetricDashboardSection] {
+        let requested = rawValues.compactMap(Self.init(rawValue:))
+        var seen: Set<MetricDashboardSection> = []
+        var ordered = requested.filter { seen.insert($0).inserted }
+
+        for section in allCases where !seen.contains(section) {
+            ordered.append(section)
+        }
+
+        return ordered
+    }
 }
 
 private struct MetricsTrendSample: Identifiable {
