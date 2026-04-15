@@ -1,0 +1,38 @@
+Apr 13 21:41:24 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Unable to deliver request ({
+	    "developer_dir" = "/Applications/Xcode.app/Contents/Developer";
+	    request = "set_developer_dir";
+	}) because we are not connected to CoreSimulatorService.
+Apr 13 21:41:24 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Error Domain=com.apple.CoreSimulator.SimError Code=402 "Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro.simdevicetype/Contents/Resources/profile.plist)" UserInfo={NSLocalizedDescription=Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro.simdevicetype/Contents/Resources/profile.plist)}
+Apr 13 21:41:24 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Error Domain=com.apple.CoreSimulator.SimError Code=402 "Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro (at 2732x2048).simdevicetype/Contents/Resources/profile.plist)" UserInfo={NSLocalizedDescription=Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro (at 2732x2048).simdevicetype/Contents/Resources/profile.plist)}
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Warning>: Unable to discover any Simulator runtimes. Developer Directory is /Applications/Xcode.app/Contents/Developer.
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Could not kickstart simdiskimaged; SimDiskImageManager services will not be available: Error Domain=NSPOSIXErrorDomain Code=53 "Software caused connection abort" UserInfo={NSLocalizedDescription=Error returned in reply from CoreSimulatorService: Connection invalid}
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: simdiskimaged returned error (invalid), marking disconnected.
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Unable to deliver request ({
+	    request = "notification_subscription";
+	    "set_path" = "/Users/jonathandowdell/Library/Developer/CoreSimulator/Devices";
+	}) because we are not connected to CoreSimulatorService.
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Could not get list of trusted mount directories: Error Domain=com.apple.CoreSimulator.SimError Code=410 "The service used to manage runtime disk images (simdiskimaged) crashed or is not responding" UserInfo={NSLocalizedDescription=The service used to manage runtime disk images (simdiskimaged) crashed or is not responding}
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: simdiskimaged returned error (invalid), marking disconnected.
+Apr 13 21:41:25 macbookpro com.apple.dt.xcodebuild[35038] <Error>: Unable to deliver request ({
+	    request = "notification_subscription";
+	    "set_path" = "/Users/jonathandowdell/Library/Developer/CoreSimulator/Devices";
+	}) because we are not connected to CoreSimulatorService.
+Apr 14 21:28:52 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Unable to deliver request ({
+	    "developer_dir" = "/Applications/Xcode.app/Contents/Developer";
+	    request = "set_developer_dir";
+	}) because we are not connected to CoreSimulatorService.
+Apr 14 21:28:52 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Error Domain=com.apple.CoreSimulator.SimError Code=402 "Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro (at 2732x2048).simdevicetype/Contents/Resources/profile.plist)" UserInfo={NSLocalizedDescription=Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro (at 2732x2048).simdevicetype/Contents/Resources/profile.plist)}
+Apr 14 21:28:52 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Error Domain=com.apple.CoreSimulator.SimError Code=402 "Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro.simdevicetype/Contents/Resources/profile.plist)" UserInfo={NSLocalizedDescription=Unable to determine supported architectures for device type (/Library/Developer/CoreSimulator/Profiles/DeviceTypes/Apple Vision Pro.simdevicetype/Contents/Resources/profile.plist)}
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Warning>: Unable to discover any Simulator runtimes. Developer Directory is /Applications/Xcode.app/Contents/Developer.
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Could not kickstart simdiskimaged; SimDiskImageManager services will not be available: Error Domain=NSPOSIXErrorDomain Code=53 "Software caused connection abort" UserInfo={NSLocalizedDescription=Error returned in reply from CoreSimulatorService: Connection invalid}
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: simdiskimaged returned error (invalid), marking disconnected.
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Could not get list of trusted mount directories: Error Domain=com.apple.CoreSimulator.SimError Code=410 "The service used to manage runtime disk images (simdiskimaged) crashed or is not responding" UserInfo={NSLocalizedDescription=The service used to manage runtime disk images (simdiskimaged) crashed or is not responding}
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: simdiskimaged returned error (invalid), marking disconnected.
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Unable to deliver request ({
+	    request = "notification_subscription";
+	    "set_path" = "/Users/jonathandowdell/Library/Developer/CoreSimulator/Devices";
+	}) because we are not connected to CoreSimulatorService.
+Apr 14 21:28:53 macbookpro com.apple.dt.xcodebuild[7367] <Error>: Unable to deliver request ({
+	    request = "notification_subscription";
+	    "set_path" = "/Users/jonathandowdell/Library/Developer/CoreSimulator/Devices";
+	}) because we are not connected to CoreSimulatorService.
