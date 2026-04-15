@@ -101,6 +101,23 @@ struct ServerMetricsDashboardView: View {
             }
     }
 
+    private var trendPoints: [MetricsTrendPoint] {
+        trendSamples.flatMap { sample in
+            [
+                MetricsTrendPoint(
+                    recordedAt: sample.recordedAt,
+                    value: sample.cpuPercent,
+                    series: .cpu
+                ),
+                MetricsTrendPoint(
+                    recordedAt: sample.recordedAt,
+                    value: sample.memoryPercent,
+                    series: .memory
+                )
+            ]
+        }
+    }
+
     private var diskRows: [DiskUsage] {
         guard let latestSnapshot else { return [] }
 
@@ -294,25 +311,43 @@ struct ServerMetricsDashboardView: View {
                                 endPoint: .bottom
                             )
                         )
+                    }
 
+                    ForEach(trendPoints.filter { $0.series == .cpu }) { point in
                         LineMark(
-                            x: .value("Recorded", sample.recordedAt),
-                            y: .value("CPU", sample.cpuPercent)
+                            x: .value("Recorded", point.recordedAt),
+                            y: .value("Percent", point.value)
                         )
                         .interpolationMethod(.catmullRom)
-                        .foregroundStyle(.orange)
                         .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .foregroundStyle(by: .value("Metric", point.series.label))
+                    }
 
+                    ForEach(trendPoints.filter { $0.series == .memory }) { point in
                         LineMark(
-                            x: .value("Recorded", sample.recordedAt),
-                            y: .value("Memory", sample.memoryPercent)
+                            x: .value("Recorded", point.recordedAt),
+                            y: .value("Percent", point.value)
                         )
                         .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                        .foregroundStyle(by: .value("Metric", point.series.label))
+                    }
+
+                    if let latestMemoryPoint = trendPoints.last(where: { $0.series == .memory }) {
+                        PointMark(
+                            x: .value("Recorded", latestMemoryPoint.recordedAt),
+                            y: .value("Percent", latestMemoryPoint.value)
+                        )
+                        .symbolSize(36)
                         .foregroundStyle(.cyan)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
                     }
                 }
                 .chartYScale(domain: 0 ... 100)
+                .chartForegroundStyleScale([
+                    MetricsTrendSeries.cpu.label: Color.orange,
+                    MetricsTrendSeries.memory.label: Color.cyan
+                ])
+                .chartLegend(.hidden)
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
@@ -617,6 +652,30 @@ private struct MetricsTrendSample: Identifiable {
     let memoryPercent: Double
 
     var id: Date { recordedAt }
+}
+
+private struct MetricsTrendPoint: Identifiable {
+    let recordedAt: Date
+    let value: Double
+    let series: MetricsTrendSeries
+
+    var id: String {
+        "\(series.rawValue)-\(recordedAt.timeIntervalSinceReferenceDate)"
+    }
+}
+
+private enum MetricsTrendSeries: String {
+    case cpu
+    case memory
+
+    var label: String {
+        switch self {
+        case .cpu:
+            return "CPU"
+        case .memory:
+            return "Memory"
+        }
+    }
 }
 
 private struct NetworkRate {
