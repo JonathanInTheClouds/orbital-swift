@@ -13,6 +13,8 @@ struct ServerListView: View {
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
 
+    @AppStorage("serverListCardStyle") private var cardStyleRawValue = ServerCardStyle.expanded.rawValue
+
     @Query(sort: \Server.name) private var servers: [Server]
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
@@ -34,6 +36,26 @@ struct ServerListView: View {
             .background(listBackground)
             .navigationTitle("Servers")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Section("Card Layout") {
+                            Button {
+                                cardStyle = .expanded
+                            } label: {
+                                Label("Detailed", systemImage: cardStyle == .expanded ? "checkmark.circle.fill" : "rectangle.grid.1x2")
+                            }
+
+                            Button {
+                                cardStyle = .compact
+                            } label: {
+                                Label("Condensed", systemImage: cardStyle == .compact ? "checkmark.circle.fill" : "rectangle.compress.vertical")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: cardStyle == .expanded ? "rectangle.grid.1x2" : "rectangle.compress.vertical")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showAddServer = true
@@ -79,7 +101,8 @@ struct ServerListView: View {
                         status: sshService.status(for: server.id),
                         latestSnapshot: latestSnapshot(for: server.id),
                         isPolling: metricsPollingService.isPolling(serverID: server.id),
-                        lastError: metricsPollingService.lastError(for: server.id)
+                        lastError: metricsPollingService.lastError(for: server.id),
+                        style: cardStyle
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
@@ -172,6 +195,11 @@ struct ServerListView: View {
 
     private var serverIDs: [UUID] {
         servers.map(\.id)
+    }
+
+    private var cardStyle: ServerCardStyle {
+        get { ServerCardStyle(rawValue: cardStyleRawValue) ?? .expanded }
+        nonmutating set { cardStyleRawValue = newValue.rawValue }
     }
 
     private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
