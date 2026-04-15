@@ -119,7 +119,16 @@ final class MetricsPollingService {
     }
 
     private func collectMetrics(for server: Server) async throws {
-        let result = try await sshService.runCommand(Self.metricsCommand, on: server)
+        // Auto-detect OS on first poll
+        if server.osKind == .unknown {
+            let osResult = try await sshService.runCommand("uname -s", on: server)
+            let raw = osResult.standardOutputString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            server.osKind = raw == "darwin" ? .darwin : .linux
+            try? modelContext.save()
+        }
+
+        let command = server.osKind == .darwin ? Self.macosMetricsCommand : Self.metricsCommand
+        let result = try await sshService.runCommand(command, on: server)
 
         guard result.exitStatus == 0 else {
             let message = result.standardErrorString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -243,6 +252,84 @@ private extension MetricsPollingService {
         set -- $stats
         echo "NET $iface $1 $9"
     done < /proc/net/dev
+
+    container_runtime=none
+    container_reachable=0
+
+    if command -v docker >/dev/null 2>&1; then
+        if docker info >/dev/null 2>&1; then
+            container_runtime=docker
+            container_reachable=1
+        else
+            container_runtime=docker
+        fi
+    fi
+
+    if [ "$container_reachable" -eq 0 ] && command -v podman >/dev/null 2>&1; then
+        if podman info >/dev/null 2>&1; then
+            container_runtime=podman
+            container_reachable=1
+        elif [ "$container_runtime" = "none" ]; then
+            container_runtime=podman
+        fi
+    fi
+
+    echo "CONTAINER_RUNTIME|$container_runtime|$container_reachable"
+
+    if [ "$container_reachable" -eq 1 ]; then
+        "$container_runtime" ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}' | while IFS= read -r container_line; do
+            [ -n "$container_line" ] || continue
+            echo "CONTAINER|$container_line"
+        done
+    fi
+    """
+
+    // MARK: - macOS metrics command
+    // Produces the same CPU/MEM/LOAD/UPTIME/DISK/NET/CONTAINER_* token format as the Linux
+    // command so the parser requires no changes. Swap is reported as 0/0 since macOS uses
+    // memory compression rather than a traditional swap partition.
+
+    static let macosMetricsCommand = """
+    ncpu=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)
+    cpu_percent=$(ps -A -o pcpu= 2>/dev/null | awk -v n="$ncpu" '{sum+=$1} END {printf "%.2f", (n>0 ? sum/n : 0)}')
+    echo "CPU ${cpu_percent:-0.00}"
+
+    loadavg=$(sysctl -n vm.loadavg 2>/dev/null)
+    load1=$(echo "$loadavg" | awk '{print $2}')
+    load5=$(echo "$loadavg" | awk '{print $3}')
+    load15=$(echo "$loadavg" | awk '{print $4}')
+    echo "LOAD ${load1:-0} ${load5:-0} ${load15:-0}"
+
+    boot_sec=$(sysctl -n kern.boottime 2>/dev/null | grep -oE 'sec = [0-9]+' | head -1 | grep -oE '[0-9]+')
+    now=$(date +%s)
+    uptime_seconds=$(( now - ${boot_sec:-$now} ))
+    echo "UPTIME $uptime_seconds"
+
+    mem_total=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    vm_out=$(vm_stat 2>/dev/null)
+    page_size=$(echo "$vm_out" | awk '/page size of/ {print $(NF-1)}')
+    page_size=${page_size:-16384}
+    pages_free=$(echo "$vm_out" | awk '/^Pages free:/ {print $NF+0}')
+    pages_inactive=$(echo "$vm_out" | awk '/^Pages inactive:/ {print $NF+0}')
+    pages_speculative=$(echo "$vm_out" | awk '/^Pages speculative:/ {print $NF+0}')
+    mem_available=$(( (${pages_free:-0} + ${pages_inactive:-0} + ${pages_speculative:-0}) * page_size ))
+    mem_used=$(( mem_total - mem_available ))
+    [ "$mem_used" -lt 0 ] && mem_used=0
+    echo "MEM $mem_total $mem_used 0 0"
+
+    df -kP 2>/dev/null | while IFS= read -r line; do
+        set -- $line
+        [ "$1" = "Filesystem" ] && continue
+        mountpoint=$6
+        [ -n "$mountpoint" ] || continue
+        case "$1" in devfs|map*) continue ;; esac
+        case "$mountpoint" in
+            /System/Volumes/VM|/System/Volumes/Preboot|/System/Volumes/Recovery|/System/Volumes/Update|/System/Volumes/xarts|/System/Volumes/iSCPreboot|/System/Volumes/Hardware|/private/var/folders/*) continue ;;
+        esac
+        echo "DISK $mountpoint $(( $3 * 1024 )) $(( $2 * 1024 ))"
+    done
+
+    netstat -ib 2>/dev/null | awk 'NR>1 && /<Link#/ && $1 != "lo0" {print "NET " $1 " " $7 " " $10}'
 
     container_runtime=none
     container_reachable=0
