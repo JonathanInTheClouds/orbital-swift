@@ -35,6 +35,7 @@ final class Server {
     var notes: String
     /// Named color used to accent the card (e.g. "blue", "green", "red")
     var colorTag: String
+    var detailSectionOrder: [String]
     var createdAt: Date
     var lastSeenAt: Date?
 
@@ -50,6 +51,7 @@ final class Server {
         tags: [String] = [],
         notes: String = "",
         colorTag: String = "blue",
+        detailSectionOrder: [String] = ["metrics", "connection", "details", "monitoring", "actions"],
         createdAt: Date = Date(),
         lastSeenAt: Date? = nil
     ) {
@@ -64,6 +66,7 @@ final class Server {
         self.tags = tags
         self.notes = notes
         self.colorTag = colorTag
+        self.detailSectionOrder = detailSectionOrder
         self.createdAt = createdAt
         self.lastSeenAt = lastSeenAt
     }
