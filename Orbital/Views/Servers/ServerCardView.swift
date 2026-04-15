@@ -84,6 +84,10 @@ struct ServerCardView: View {
                                 tint: .blue
                             )
                         }
+
+                        if server.osKind != .unknown {
+                            statusPill(label: server.osKind.displayName, tint: .secondary)
+                        }
                     }
                 }
             }

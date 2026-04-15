@@ -144,6 +144,12 @@ struct ServerDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
+                    if server.osKind != .unknown {
+                        Label(server.osKind.displayName, systemImage: server.osKind.systemImage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     if let lastSeen = server.lastSeenAt {
                         Text("Last seen \(lastSeen.formatted(.relative(presentation: .named)))")
                             .font(.caption)
