@@ -11,9 +11,11 @@ import SwiftUI
 struct ServerDetailView: View {
     let server: Server
 
+    @Environment(\.modelContext) private var modelContext
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @State private var showEditServer = false
+    @State private var showReorderSections = false
     @State private var connectError: IdentifiableError?
     @State private var navigateToTerminal = false
     @State private var pollingInterval: Double = 30
@@ -23,138 +25,8 @@ struct ServerDetailView: View {
             VStack(spacing: 16) {
                 headerCard
 
-                ServerMetricsDashboardView(server: server)
-
-                DetailCardSection(title: "Connection", subtitle: "Transport and authentication settings") {
-                    VStack(spacing: 14) {
-                        LabeledRow(label: "Host", value: server.host)
-                        LabeledRow(label: "Port", value: "\(server.port)")
-                        LabeledRow(label: "Username", value: server.username)
-                        LabeledRow(label: "Auth", value: server.authMethod.displayName)
-
-                        if let jumpHost = server.jumpHostRef, !jumpHost.isEmpty {
-                            LabeledRow(label: "Jump Host", value: jumpHost)
-                        }
-                    }
-                }
-
-                if !server.tags.isEmpty || !server.notes.isEmpty {
-                    DetailCardSection(title: "Details", subtitle: "Metadata and notes for this node") {
-                        VStack(alignment: .leading, spacing: 14) {
-                            if !server.tags.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Tags")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-
-                                    FlowLayout(spacing: 6) {
-                                        ForEach(server.tags, id: \.self) { tag in
-                                            Text(tag)
-                                                .font(.caption.weight(.medium))
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 5)
-                                                .background(accentColor.opacity(0.12), in: Capsule())
-                                        }
-                                    }
-                                }
-                            }
-
-                            if !server.notes.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Notes")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    Text(server.notes)
-                                        .font(.subheadline)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                DetailCardSection(title: "Monitoring", subtitle: "Polling cadence and collection health") {
-                    VStack(spacing: 14) {
-                        VStack(spacing: 12) {
-                            LabeledRow(label: "Polling", value: isPolling ? "Active" : "Stopped")
-                            LabeledRow(label: "Interval", value: "\(Int(pollingInterval))s")
-
-                            if let lastRecordedAt {
-                                LabeledRow(
-                                    label: "Last Snapshot",
-                                    value: lastRecordedAt.formatted(date: .abbreviated, time: .standard)
-                                )
-                            }
-
-                            if let lastError {
-                                LabeledRow(label: "Last Error", value: lastError)
-                                    .foregroundStyle(.red)
-                            }
-                        }
-
-                        Stepper(value: $pollingInterval, in: 5 ... 300, step: 5) {
-                            Text("Poll Every \(Int(pollingInterval)) Seconds")
-                                .font(.subheadline.weight(.medium))
-                        }
-
-                        VStack(spacing: 10) {
-                            Button {
-                                metricsPollingService.startPolling(server: server, every: pollingInterval)
-                            } label: {
-                                Label(
-                                    isPolling ? "Restart Polling" : "Start Polling",
-                                    systemImage: "waveform.path.ecg"
-                                )
-                                .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            HStack(spacing: 10) {
-                                Button {
-                                    Task { await pollNow() }
-                                } label: {
-                                    Label("Poll Now", systemImage: "arrow.clockwise")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-
-                                if isPolling {
-                                    Button(role: .destructive) {
-                                        metricsPollingService.stopPolling(serverID: server.id)
-                                    } label: {
-                                        Label("Stop", systemImage: "stop.circle")
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                DetailCardSection(title: "Actions", subtitle: "Interactive shell and session control") {
-                    VStack(spacing: 10) {
-                        Button {
-                            Task { await connectAndOpenTerminal() }
-                        } label: {
-                            Label(
-                                currentStatus == .connected ? "Open Terminal" : "Connect & Open Terminal",
-                                systemImage: "terminal"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(currentStatus == .connecting)
-
-                        if currentStatus == .connected {
-                            Button(role: .destructive) {
-                                sshService.disconnect(serverID: server.id)
-                            } label: {
-                                Label("Disconnect", systemImage: "xmark.circle")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
+                ForEach(visibleSections) { section in
+                    sectionView(for: section)
                 }
             }
             .padding(.horizontal, 16)
@@ -163,16 +35,60 @@ struct ServerDetailView: View {
         .refreshable {
             await pollNow()
         }
+        .task {
+            persistSectionOrderIfNeeded()
+        }
         .background(backgroundGradient)
         .navigationTitle(server.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showReorderSections = true
+                } label: {
+                    Label("Reorder Sections", systemImage: "arrow.up.arrow.down.circle")
+                }
+            }
+
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { showEditServer = true }
             }
         }
         .sheet(isPresented: $showEditServer) {
             AddEditServerView(server: server)
+        }
+        .sheet(isPresented: $showReorderSections) {
+            NavigationStack {
+                List {
+                    ForEach(orderedSections) { section in
+                        HStack(spacing: 12) {
+                            Image(systemName: section.systemImage)
+                                .foregroundStyle(accentColor)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(section.title)
+                                Text(section.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .onMove(perform: moveSections)
+                }
+                .navigationTitle("Reorder Sections")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") {
+                            showReorderSections = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        EditButton()
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
         .navigationDestination(isPresented: $navigateToTerminal) {
             if let session = sshService.session(for: server.id) {
@@ -191,6 +107,21 @@ struct ServerDetailView: View {
 
     private var currentStatus: ConnectionStatus {
         sshService.status(for: server.id)
+    }
+
+    private var orderedSections: [ServerDetailSection] {
+        ServerDetailSection.sanitized(from: server.detailSectionOrder)
+    }
+
+    private var visibleSections: [ServerDetailSection] {
+        orderedSections.filter { section in
+            switch section {
+            case .details:
+                return !server.tags.isEmpty || !server.notes.isEmpty
+            default:
+                return true
+            }
+        }
     }
 
     private var headerCard: some View {
@@ -288,6 +219,148 @@ struct ServerDetailView: View {
         metricsPollingService.lastError(for: server.id)
     }
 
+    @ViewBuilder
+    private func sectionView(for section: ServerDetailSection) -> some View {
+        switch section {
+        case .metrics:
+            ServerMetricsDashboardView(server: server)
+
+        case .connection:
+            DetailCardSection(title: "Connection", subtitle: "Transport and authentication settings") {
+                VStack(spacing: 14) {
+                    LabeledRow(label: "Host", value: server.host)
+                    LabeledRow(label: "Port", value: "\(server.port)")
+                    LabeledRow(label: "Username", value: server.username)
+                    LabeledRow(label: "Auth", value: server.authMethod.displayName)
+
+                    if let jumpHost = server.jumpHostRef, !jumpHost.isEmpty {
+                        LabeledRow(label: "Jump Host", value: jumpHost)
+                    }
+                }
+            }
+
+        case .details:
+            DetailCardSection(title: "Details", subtitle: "Metadata and notes for this node") {
+                VStack(alignment: .leading, spacing: 14) {
+                    if !server.tags.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Tags")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            FlowLayout(spacing: 6) {
+                                ForEach(server.tags, id: \.self) { tag in
+                                    Text(tag)
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(accentColor.opacity(0.12), in: Capsule())
+                                }
+                            }
+                        }
+                    }
+
+                    if !server.notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Notes")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(server.notes)
+                                .font(.subheadline)
+                        }
+                    }
+                }
+            }
+
+        case .monitoring:
+            DetailCardSection(title: "Monitoring", subtitle: "Polling cadence and collection health") {
+                VStack(spacing: 14) {
+                    VStack(spacing: 12) {
+                        LabeledRow(label: "Polling", value: isPolling ? "Active" : "Stopped")
+                        LabeledRow(label: "Interval", value: "\(Int(pollingInterval))s")
+
+                        if let lastRecordedAt {
+                            LabeledRow(
+                                label: "Last Snapshot",
+                                value: lastRecordedAt.formatted(date: .abbreviated, time: .standard)
+                            )
+                        }
+
+                        if let lastError {
+                            LabeledRow(label: "Last Error", value: lastError)
+                                .foregroundStyle(.red)
+                        }
+                    }
+
+                    Stepper(value: $pollingInterval, in: 5 ... 300, step: 5) {
+                        Text("Poll Every \(Int(pollingInterval)) Seconds")
+                            .font(.subheadline.weight(.medium))
+                    }
+
+                    VStack(spacing: 10) {
+                        Button {
+                            metricsPollingService.startPolling(server: server, every: pollingInterval)
+                        } label: {
+                            Label(
+                                isPolling ? "Restart Polling" : "Start Polling",
+                                systemImage: "waveform.path.ecg"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                Task { await pollNow() }
+                            } label: {
+                                Label("Poll Now", systemImage: "arrow.clockwise")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+
+                            if isPolling {
+                                Button(role: .destructive) {
+                                    metricsPollingService.stopPolling(serverID: server.id)
+                                } label: {
+                                    Label("Stop", systemImage: "stop.circle")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+            }
+
+        case .actions:
+            DetailCardSection(title: "Actions", subtitle: "Interactive shell and session control") {
+                VStack(spacing: 10) {
+                    Button {
+                        Task { await connectAndOpenTerminal() }
+                    } label: {
+                        Label(
+                            currentStatus == .connected ? "Open Terminal" : "Connect & Open Terminal",
+                            systemImage: "terminal"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(currentStatus == .connecting)
+
+                    if currentStatus == .connected {
+                        Button(role: .destructive) {
+                            sshService.disconnect(serverID: server.id)
+                        } label: {
+                            Label("Disconnect", systemImage: "xmark.circle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+    }
+
     private func connectAndOpenTerminal() async {
         do {
             if currentStatus != .connected {
@@ -305,6 +378,95 @@ struct ServerDetailView: View {
         } catch {
             connectError = IdentifiableError(message: error.localizedDescription)
         }
+    }
+
+    private func moveSections(from source: IndexSet, to destination: Int) {
+        var updatedOrder = orderedSections
+        updatedOrder.move(fromOffsets: source, toOffset: destination)
+        server.detailSectionOrder = updatedOrder.map(\.rawValue)
+        saveServerChanges()
+    }
+
+    private func persistSectionOrderIfNeeded() {
+        let normalizedOrder = orderedSections.map(\.rawValue)
+        guard server.detailSectionOrder != normalizedOrder else { return }
+        server.detailSectionOrder = normalizedOrder
+        saveServerChanges()
+    }
+
+    private func saveServerChanges() {
+        do {
+            try modelContext.save()
+        } catch {
+            connectError = IdentifiableError(message: "Failed to save server changes: \(error.localizedDescription)")
+        }
+    }
+}
+
+private enum ServerDetailSection: String, CaseIterable, Identifiable {
+    case metrics
+    case connection
+    case details
+    case monitoring
+    case actions
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .metrics:
+            return "Metrics"
+        case .connection:
+            return "Connection"
+        case .details:
+            return "Details"
+        case .monitoring:
+            return "Monitoring"
+        case .actions:
+            return "Actions"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .metrics:
+            return "Health dashboard and recent trends"
+        case .connection:
+            return "Host, auth, and jump settings"
+        case .details:
+            return "Tags and notes"
+        case .monitoring:
+            return "Polling cadence and manual controls"
+        case .actions:
+            return "Shell access and disconnect controls"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .metrics:
+            return "waveform.path.ecg.rectangle"
+        case .connection:
+            return "network"
+        case .details:
+            return "tag"
+        case .monitoring:
+            return "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        case .actions:
+            return "slider.horizontal.3"
+        }
+    }
+
+    static func sanitized(from rawValues: [String]) -> [ServerDetailSection] {
+        let requested = rawValues.compactMap(Self.init(rawValue:))
+        var seen: Set<ServerDetailSection> = []
+        var ordered = requested.filter { seen.insert($0).inserted }
+
+        for section in allCases where !seen.contains(section) {
+            ordered.append(section)
+        }
+
+        return ordered
     }
 }
 
