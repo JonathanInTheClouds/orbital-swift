@@ -20,6 +20,11 @@ enum AuthMethod: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum VolumeSelectionMode: String, Codable, CaseIterable, Sendable {
+    case all
+    case custom
+}
+
 @Model
 final class Server {
     var id: UUID
@@ -35,6 +40,8 @@ final class Server {
     var notes: String
     /// Named color used to accent the card (e.g. "blue", "green", "red")
     var colorTag: String
+    var volumeSelectionMode: VolumeSelectionMode
+    var selectedVolumeMountPoints: [String]
     var detailSectionOrder: [String]
     var metricsSectionOrder: [String]
     var createdAt: Date
@@ -52,6 +59,8 @@ final class Server {
         tags: [String] = [],
         notes: String = "",
         colorTag: String = "blue",
+        volumeSelectionMode: VolumeSelectionMode = .all,
+        selectedVolumeMountPoints: [String] = [],
         detailSectionOrder: [String] = ["metrics", "connection", "details", "monitoring", "actions"],
         metricsSectionOrder: [String] = ["overview", "vitals", "history", "system", "disks"],
         createdAt: Date = Date(),
@@ -68,6 +77,8 @@ final class Server {
         self.tags = tags
         self.notes = notes
         self.colorTag = colorTag
+        self.volumeSelectionMode = volumeSelectionMode
+        self.selectedVolumeMountPoints = selectedVolumeMountPoints
         self.detailSectionOrder = detailSectionOrder
         self.metricsSectionOrder = metricsSectionOrder
         self.createdAt = createdAt
