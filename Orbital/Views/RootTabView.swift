@@ -12,7 +12,7 @@ struct RootTabView: View {
     @State private var selectedTab: Tab = .servers
 
     enum Tab {
-        case servers, terminal, settings
+        case servers, terminal, containers, settings
     }
 
     var body: some View {
@@ -28,6 +28,12 @@ struct RootTabView: View {
                     Label("Terminal", systemImage: "terminal")
                 }
                 .tag(Tab.terminal)
+
+            ContainersView()
+                .tabItem {
+                    Label("Containers", systemImage: "shippingbox")
+                }
+                .tag(Tab.containers)
 
             SettingsView()
                 .tabItem {
