@@ -66,6 +66,20 @@ struct SSHTerminalSize: Equatable, Sendable {
     nonisolated static let `default` = SSHTerminalSize(columns: 80, rows: 24)
 }
 
+struct SSHCommandResult: Sendable {
+    let standardOutput: Data
+    let standardError: Data
+    let exitStatus: Int32
+
+    var standardOutputString: String {
+        String(decoding: standardOutput, as: UTF8.self)
+    }
+
+    var standardErrorString: String {
+        String(decoding: standardError, as: UTF8.self)
+    }
+}
+
 enum SSHBackendKind: String, CaseIterable, Identifiable {
     case nioSSH
     case libssh
@@ -160,9 +174,15 @@ protocol SSHSessionTransport: AnyObject {
     func close()
 }
 
-protocol SSHBackend {
+protocol SSHCommandTransport: Sendable {
+    func run(command: String) async throws -> SSHCommandResult
+    func close() async
+}
+
+protocol SSHBackend: Sendable {
     var kind: SSHBackendKind { get }
     func connect(to target: SSHConnectionTarget, initialTerminalSize: SSHTerminalSize) async throws -> SSHSession
+    func makeCommandTransport(to target: SSHConnectionTarget) async throws -> any SSHCommandTransport
     func presentableError(from error: any Error) -> any Error
 }
 
@@ -531,6 +551,7 @@ private func authenticationMaterial(for target: SSHConnectionTarget) async throw
 final class SSHService {
     static let shared = SSHService()
     private let backend: any SSHBackend
+    private let commandPool = SSHCommandPool()
 
     init(backend: (any SSHBackend)? = nil) {
         self.backend = backend ?? SSHBackendFactory.makePreferredBackend()
@@ -575,16 +596,34 @@ final class SSHService {
         }
     }
 
+    func runCommand(
+        _ command: String,
+        on server: Server
+    ) async throws -> SSHCommandResult {
+        do {
+            return try await commandPool.run(
+                command: command,
+                on: SSHConnectionTarget(server: server),
+                using: backend
+            )
+        } catch {
+            throw backend.presentableError(from: error)
+        }
+    }
+
     // MARK: Disconnect
 
     func disconnect(serverID: UUID) {
         sessions[serverID]?.close()
         sessions.removeValue(forKey: serverID)
         statuses[serverID] = .disconnected
+        Task {
+            await commandPool.disconnect(serverID: serverID)
+        }
     }
 }
 
-final class NIOSSHBackend: SSHBackend {
+final class NIOSSHBackend: SSHBackend, @unchecked Sendable {
     let kind: SSHBackendKind = .nioSSH
     private let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
 
@@ -732,6 +771,12 @@ final class NIOSSHBackend: SSHBackend {
         }
     }
 
+    func makeCommandTransport(to target: SSHConnectionTarget) async throws -> any SSHCommandTransport {
+        throw SSHServiceError.backendUnavailable(
+            "Persistent command execution requires the libssh backend."
+        )
+    }
+
     func presentableError(from error: any Error) -> any Error {
         if error is SSHServiceError {
             return error
@@ -765,7 +810,7 @@ final class NIOSSHBackend: SSHBackend {
 
 /// Placeholder for the libssh migration target. The app still defaults to
 /// `NIOSSHBackend` until the C bridge and Xcode integration land.
-final class LibsshBackend: SSHBackend {
+final class LibsshBackend: SSHBackend, @unchecked Sendable {
     let kind: SSHBackendKind = .libssh
 
     private let bridge: (any LibsshClientBridge)?
@@ -791,6 +836,26 @@ final class LibsshBackend: SSHBackend {
         return try await bridge.connect(
             configuration: configuration,
             serverID: target.serverID,
+            serverName: target.serverName
+        )
+    }
+
+    func makeCommandTransport(to target: SSHConnectionTarget) async throws -> any SSHCommandTransport {
+        guard let bridge else {
+            throw SSHServiceError.backendUnavailable(
+                "The libssh backend scaffold is present, but the native libssh bridge is not integrated yet."
+            )
+        }
+
+        let configuration = LibsshConnectionConfiguration(
+            host: target.host,
+            port: target.port,
+            authentication: try await authenticationMaterial(for: target),
+            hostKeyVerifier: SSHHostKeyVerifier(host: target.host),
+            initialTerminalSize: .default
+        )
+        return try await bridge.makeCommandTransport(
+            configuration: configuration,
             serverName: target.serverName
         )
     }

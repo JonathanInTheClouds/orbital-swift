@@ -40,6 +40,15 @@ struct RootTabView: View {
 }
 
 #Preview {
+    let container = try! ModelContainer(
+        for: Server.self,
+        MetricSnapshot.self,
+        Script.self,
+        ScriptRun.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+
     RootTabView()
-        .modelContainer(for: [Server.self, MetricSnapshot.self, Script.self, ScriptRun.self], inMemory: true)
+        .modelContainer(container)
+        .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
 }
