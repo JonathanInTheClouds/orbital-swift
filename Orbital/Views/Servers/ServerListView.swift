@@ -11,8 +11,12 @@ import SwiftData
 struct ServerListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SSHService.self) private var sshService
+    @Environment(MetricsPollingService.self) private var metricsPollingService
+
+    @AppStorage("serverListCardStyle") private var cardStyleRawValue = ServerCardStyle.expanded.rawValue
 
     @Query(sort: \Server.name) private var servers: [Server]
+    @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
     @State private var showAddServer = false
     @State private var serverToEdit: Server?
@@ -28,8 +32,30 @@ struct ServerListView: View {
                     serverList
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(listBackground)
             .navigationTitle("Servers")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Section("Card Layout") {
+                            Button {
+                                cardStyle = .expanded
+                            } label: {
+                                Label("Detailed", systemImage: cardStyle == .expanded ? "checkmark.circle.fill" : "rectangle.grid.1x2")
+                            }
+
+                            Button {
+                                cardStyle = .compact
+                            } label: {
+                                Label("Condensed", systemImage: cardStyle == .compact ? "checkmark.circle.fill" : "rectangle.compress.vertical")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: cardStyle == .expanded ? "rectangle.grid.1x2" : "rectangle.compress.vertical")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showAddServer = true
@@ -44,6 +70,12 @@ struct ServerListView: View {
             }
             .sheet(item: $serverToEdit) { server in
                 AddEditServerView(server: server)
+            }
+            .task {
+                metricsPollingService.ensureAutomaticPolling(for: servers)
+            }
+            .onChange(of: serverIDs) { _, _ in
+                metricsPollingService.ensureAutomaticPolling(for: servers)
             }
             .alert("Connection Error", isPresented: Binding(
                 get: { connectError != nil },
@@ -66,7 +98,11 @@ struct ServerListView: View {
                 } label: {
                     ServerCardView(
                         server: server,
-                        status: sshService.status(for: server.id)
+                        status: sshService.status(for: server.id),
+                        latestSnapshot: latestSnapshot(for: server.id),
+                        isPolling: metricsPollingService.isPolling(serverID: server.id),
+                        lastError: metricsPollingService.lastError(for: server.id),
+                        style: cardStyle
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
@@ -157,6 +193,43 @@ struct ServerListView: View {
         }
     }
 
+    private var serverIDs: [UUID] {
+        servers.map(\.id)
+    }
+
+    private var cardStyle: ServerCardStyle {
+        get { ServerCardStyle(rawValue: cardStyleRawValue) ?? .expanded }
+        nonmutating set { cardStyleRawValue = newValue.rawValue }
+    }
+
+    private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
+        var results: [UUID: MetricSnapshot] = [:]
+
+        for snapshot in snapshots {
+            guard let serverID = snapshot.server?.id, results[serverID] == nil else { continue }
+            results[serverID] = snapshot
+        }
+
+        return results
+    }
+
+    private var listBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(uiColor: .systemBackground),
+                .teal.opacity(0.06),
+                Color(uiColor: .systemBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+
+    private func latestSnapshot(for serverID: UUID) -> MetricSnapshot? {
+        latestSnapshotByServerID[serverID]
+    }
+
     private func connectToServer(_ server: Server) async {
         do {
             _ = try await sshService.connect(to: server)
@@ -180,7 +253,14 @@ struct IdentifiableError: Identifiable {
 }
 
 #Preview {
-    ServerListView()
-        .modelContainer(for: [Server.self], inMemory: true)
+    let container = try! ModelContainer(
+        for: Server.self,
+        MetricSnapshot.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+
+    return ServerListView()
+        .modelContainer(container)
         .environment(SSHService.shared)
+        .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
 }
