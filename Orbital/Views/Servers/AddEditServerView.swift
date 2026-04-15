@@ -141,19 +141,22 @@ struct AddEditServerView: View {
                 Button {
                     currentStep = step
                 } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            Image(systemName: step.systemImage)
-                                .font(.caption.weight(.bold))
-                            Text(step.title)
-                                .font(.caption.weight(.semibold))
-                        }
+                    VStack(spacing: 8) {
+                        Image(systemName: step.systemImage)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(stepForeground(for: step))
+
+                        Text(step.railTitle)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                            .foregroundStyle(stepForeground(for: step))
 
                         Capsule()
                             .fill(stepIndicatorColor(for: step))
                             .frame(height: 4)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 70)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 12)
                     .background(stepBackground(for: step), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -488,6 +491,10 @@ struct AddEditServerView: View {
         return Color(uiColor: .secondarySystemBackground)
     }
 
+    private func stepForeground(for step: ServerEditorStep) -> Color {
+        step == currentStep ? selectedColor : .primary
+    }
+
     private func stepIndicatorColor(for step: ServerEditorStep) -> Color {
         if step == currentStep {
             return selectedColor
@@ -607,6 +614,19 @@ private enum ServerEditorStep: String, CaseIterable, Identifiable {
             return "Connection"
         case .authentication:
             return "Authentication"
+        case .details:
+            return "Details"
+        }
+    }
+
+    var railTitle: String {
+        switch self {
+        case .identity:
+            return "Identity"
+        case .connection:
+            return "Connect"
+        case .authentication:
+            return "Auth"
         case .details:
             return "Details"
         }

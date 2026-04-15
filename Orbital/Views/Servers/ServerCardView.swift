@@ -129,8 +129,8 @@ struct ServerCardView: View {
                     )
 
                     ServerCardSignal(
-                        title: "Net",
-                        value: "\(latestSnapshot.networkStats.count) if",
+                        title: "Interfaces",
+                        value: "\(latestSnapshot.networkStats.count)",
                         tint: .blue
                     )
                 }
