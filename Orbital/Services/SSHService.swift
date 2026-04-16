@@ -99,6 +99,24 @@ struct SSHConnectionTarget: Sendable {
         self.authMethod = server.authMethod
         self.credentialRef = server.credentialRef
     }
+
+    init(
+        serverID: UUID,
+        serverName: String,
+        host: String,
+        port: Int,
+        username: String,
+        authMethod: AuthMethod,
+        credentialRef: String
+    ) {
+        self.serverID = serverID
+        self.serverName = serverName
+        self.host = host
+        self.port = port
+        self.username = username
+        self.authMethod = authMethod
+        self.credentialRef = credentialRef
+    }
 }
 
 struct SSHHostKeyVerifier: Sendable {
@@ -265,6 +283,19 @@ final class SSHService {
                 statuses[server.id] = .error(presentableError.localizedDescription)
             }
             throw presentableError
+        }
+    }
+
+    /// Runs a single command on a one-off connection that bypasses the persistent pool.
+    /// The transport is created, used once, and immediately closed.
+    /// Intended for deployment/setup operations where no cached session should be left open.
+    func runCommandOnce(_ command: String, onTarget target: SSHConnectionTarget) async throws -> SSHCommandResult {
+        let transport = try await backend.makeCommandTransport(to: target)
+        defer { Task { await transport.close() } }
+        do {
+            return try await transport.run(command: command)
+        } catch {
+            throw backend.presentableError(from: error)
         }
     }
 
