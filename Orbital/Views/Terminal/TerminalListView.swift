@@ -153,75 +153,79 @@ struct TerminalListView: View {
 
     private var emptyState: some View {
         GeometryReader { proxy in
-            VStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(Color.teal.opacity(0.14))
-                        .frame(width: 88, height: 88)
+            ScrollView {
+                VStack(spacing: 18) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(Color.teal.opacity(0.14))
+                            .frame(width: 88, height: 88)
 
-                    Image(systemName: "apple.terminal.on.rectangle")
-                        .font(.system(size: 34, weight: .semibold))
-                        .foregroundStyle(.teal)
-                }
+                        Image(systemName: "apple.terminal.on.rectangle")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(.teal)
+                    }
 
-                VStack(spacing: 8) {
-                    Text("No Active Sessions")
-                        .font(.title2.weight(.bold))
+                    VStack(spacing: 8) {
+                        Text("No Active Sessions")
+                            .font(.title2.weight(.bold))
 
-                    Text(servers.isEmpty
-                         ? "Add a server first, then open a terminal session when you are ready to connect."
-                         : "Start a fresh terminal whenever you need one. Existing servers are ready to launch from here.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                VStack(spacing: 12) {
-                    if servers.isEmpty {
-                        Text("Use the Servers tab to add your first host.")
-                            .font(.caption.weight(.medium))
+                        Text(servers.isEmpty
+                             ? "Add a server first, then open a terminal session when you are ready to connect."
+                             : "Start a fresh terminal whenever you need one. Existing servers are ready to launch from here.")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                    } else {
-                        Button {
-                            showNewSession = true
-                        } label: {
-                            Label("Open New Session", systemImage: "plus")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
+                            .multilineTextAlignment(.center)
                     }
 
-                    HStack(spacing: 8) {
-                        terminalEmptyStatePill("Separate Sessions", tint: .teal)
-                        terminalEmptyStatePill("Reconnect Fast", tint: .indigo)
-                        terminalEmptyStatePill("Session History", tint: .cyan)
+                    VStack(spacing: 12) {
+                        if servers.isEmpty {
+                            Text("Use the Servers tab to add your first host.")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button {
+                                showNewSession = true
+                            } label: {
+                                Label("Open New Session", systemImage: "plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+
+                        HStack(spacing: 8) {
+                            terminalEmptyStatePill("Separate Sessions", tint: .teal)
+                            terminalEmptyStatePill("Reconnect Fast", tint: .indigo)
+                            terminalEmptyStatePill("Session History", tint: .cyan)
+                        }
                     }
                 }
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 28)
-            .frame(maxWidth: 460)
-            .background {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.teal.opacity(0.18),
-                                Color.teal.opacity(0.05),
-                                Color(uiColor: .secondarySystemBackground)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                .padding(.horizontal, 24)
+                .padding(.vertical, 28)
+                .frame(maxWidth: 460)
+                .background {
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.teal.opacity(0.18),
+                                    Color.teal.opacity(0.05),
+                                    Color(uiColor: .secondarySystemBackground)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 32, style: .continuous)
-                            .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-                    }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.top, proxy.size.height * 0.12)
+                .padding(.bottom, 32)
+                .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 20)
-            .padding(.top, proxy.size.height * 0.12)
         }
     }
 
