@@ -171,10 +171,9 @@ final class SSHSession: Identifiable {
     let serverID: UUID
     let serverName: String
 
-    /// Raw bytes arriving from the remote shell. Finishes when the connection drops.
-    let outputStream: AsyncStream<Data>
-
     private let transport: any SSHSessionTransport
+    private let outputBuffer = SSHSessionOutputBuffer()
+    private let outputRelayTask: Task<Void, Never>
 
     init(
         serverID: UUID,
@@ -185,7 +184,26 @@ final class SSHSession: Identifiable {
         self.serverID = serverID
         self.serverName = serverName
         self.transport = transport
-        self.outputStream = outputStream
+        self.outputRelayTask = Task { [outputBuffer] in
+            for await chunk in outputStream {
+                await outputBuffer.publish(chunk)
+            }
+            await outputBuffer.finish()
+        }
+    }
+
+    deinit {
+        outputRelayTask.cancel()
+        let outputBuffer = outputBuffer
+        Task {
+            await outputBuffer.finish()
+        }
+    }
+
+    /// Raw bytes arriving from the remote shell, prefixed with any buffered output
+    /// already seen by this session so terminal views can reopen without rendering blank.
+    var outputStream: AsyncStream<Data> {
+        outputBuffer.makeStream()
     }
 
     func write(_ data: Data) {
@@ -197,7 +215,72 @@ final class SSHSession: Identifiable {
     }
 
     func close() {
+        outputRelayTask.cancel()
+        let outputBuffer = outputBuffer
+        Task {
+            await outputBuffer.finish()
+        }
         transport.close()
+    }
+}
+
+private actor SSHSessionOutputBuffer {
+    private var history = Data()
+    private var continuations: [UUID: AsyncStream<Data>.Continuation] = [:]
+    private var isFinished = false
+
+    nonisolated func makeStream() -> AsyncStream<Data> {
+        let streamID = UUID()
+        return AsyncStream { [weak self] continuation in
+            guard let self else {
+                continuation.finish()
+                return
+            }
+            Task {
+                await self.register(continuation, id: streamID)
+            }
+        }
+    }
+
+    func publish(_ chunk: Data) {
+        guard !isFinished else { return }
+        history.append(chunk)
+        for continuation in continuations.values {
+            continuation.yield(chunk)
+        }
+    }
+
+    func finish() {
+        guard !isFinished else { return }
+        isFinished = true
+        for continuation in continuations.values {
+            continuation.finish()
+        }
+        continuations.removeAll()
+    }
+
+    private func register(_ continuation: AsyncStream<Data>.Continuation, id: UUID) {
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            Task {
+                await self.removeContinuation(id: id)
+            }
+        }
+
+        if !history.isEmpty {
+            continuation.yield(history)
+        }
+
+        if isFinished {
+            continuation.finish()
+            return
+        }
+
+        continuations[id] = continuation
+    }
+
+    private func removeContinuation(id: UUID) {
+        continuations.removeValue(forKey: id)
     }
 }
 
