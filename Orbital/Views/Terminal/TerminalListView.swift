@@ -152,22 +152,77 @@ struct TerminalListView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "apple.terminal.on.rectangle")
-                .font(.system(size: 56))
-                .foregroundStyle(.tertiary)
+        GeometryReader { proxy in
+            VStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.teal.opacity(0.14))
+                        .frame(width: 88, height: 88)
 
-            Text("No Active Sessions")
-                .font(.title2)
-                .fontWeight(.semibold)
+                    Image(systemName: "apple.terminal.on.rectangle")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(.teal)
+                }
 
-            Text("Connect to a server from the Servers tab to open a terminal session.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                VStack(spacing: 8) {
+                    Text("No Active Sessions")
+                        .font(.title2.weight(.bold))
+
+                    Text(servers.isEmpty
+                         ? "Add a server first, then open a terminal session when you are ready to connect."
+                         : "Start a fresh terminal whenever you need one. Existing servers are ready to launch from here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 12) {
+                    if servers.isEmpty {
+                        Text("Use the Servers tab to add your first host.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button {
+                            showNewSession = true
+                        } label: {
+                            Label("Open New Session", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+
+                    HStack(spacing: 8) {
+                        terminalEmptyStatePill("Separate Sessions", tint: .teal)
+                        terminalEmptyStatePill("Reconnect Fast", tint: .indigo)
+                        terminalEmptyStatePill("Session History", tint: .cyan)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 28)
+            .frame(maxWidth: 460)
+            .background {
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.teal.opacity(0.18),
+                                Color.teal.opacity(0.05),
+                                Color(uiColor: .secondarySystemBackground)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 32, style: .continuous)
+                            .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 20)
+            .padding(.top, proxy.size.height * 0.12)
         }
-        .padding()
     }
 
     // MARK: - Helpers
@@ -232,6 +287,15 @@ struct TerminalListView: View {
             sshService.disconnect(sessionID: session.id)
         }
     }
+}
+
+private func terminalEmptyStatePill(_ label: String, tint: Color) -> some View {
+    Text(label)
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.12), in: Capsule())
 }
 
 #Preview {
