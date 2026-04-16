@@ -22,6 +22,18 @@
 <body>
 <div id="terminal"></div>
 
+<!--
+  Pre-init buffer: Swift may call receiveData() before the ES module
+  below finishes loading. We capture those chunks here and flush them
+  once xterm is open and ready.
+-->
+<script>
+  window._preInitBuffer = [];
+  window.receiveData = function(b64) {
+    window._preInitBuffer.push(b64);
+  };
+</script>
+
 <script type="module">
   import { Terminal } from './xterm.mjs';
   import { FitAddon } from './addon-fit.mjs';
@@ -61,20 +73,27 @@
   term.open(document.getElementById('terminal'));
   fitAddon.fit();
 
-  // ── Input: forward keystrokes to Swift ───────────────────────────────────
-  term.onData(data => {
-    window.webkit.messageHandlers.terminalInput.postMessage(data);
-  });
-
-  // ── Output: receive base64-encoded bytes from Swift, write to terminal ───
-  window.receiveData = function(base64String) {
-    const binary = atob(base64String);
+  // ── Live receiveData: decode base64 bytes and write to terminal ───────────
+  window.receiveData = function(b64) {
+    const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
     term.write(bytes);
   };
+
+  // ── Flush pre-init buffer ─────────────────────────────────────────────────
+  const pending = window._preInitBuffer || [];
+  window._preInitBuffer = null;
+  for (const b64 of pending) {
+    window.receiveData(b64);
+  }
+
+  // ── Input: forward keystrokes to Swift ───────────────────────────────────
+  term.onData(data => {
+    window.webkit.messageHandlers.terminalInput.postMessage(data);
+  });
 
   // ── Resize: notify Swift of new terminal dimensions ───────────────────────
   const resizeObserver = new ResizeObserver(() => {
@@ -86,9 +105,8 @@
   });
   resizeObserver.observe(document.getElementById('terminal'));
 
-  // ── Initial greeting ──────────────────────────────────────────────────────
-  term.writeln('\x1b[1;34m  Orbital\x1b[0m \x1b[2m— Connecting…\x1b[0m');
-  term.writeln('');
+  // ── Signal Swift that the terminal is ready to receive data ──────────────
+  window.webkit.messageHandlers.terminalReady.postMessage('ready');
 </script>
 </body>
 </html>
