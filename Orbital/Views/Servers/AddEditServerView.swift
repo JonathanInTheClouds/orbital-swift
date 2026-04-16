@@ -489,7 +489,7 @@ struct AddEditServerView: View {
                 Button {
                     showAuthorizeSheet = true
                 } label: {
-                    Label("Authorize on This Server", systemImage: "square.and.arrow.up")
+                    Label("Authorize on This Server", systemImage: "lock.shield")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
