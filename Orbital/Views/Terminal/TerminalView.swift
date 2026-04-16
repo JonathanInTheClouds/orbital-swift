@@ -18,7 +18,7 @@ struct TerminalView: View {
     var body: some View {
         TerminalWebView(session: session, bridge: bridge)
             .ignoresSafeArea(.container, edges: .bottom)
-            .navigationTitle(session.serverName)
+            .navigationTitle(session.displayTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .secondaryAction) {

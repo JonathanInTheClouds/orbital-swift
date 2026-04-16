@@ -10,14 +10,12 @@ import SwiftData
 
 struct TerminalListView: View {
     @Environment(SSHService.self) private var sshService
-    @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \Server.name) private var servers: [Server]
 
     @AppStorage("terminalListCardStyle") private var cardStyleRawValue = TerminalCardStyle.expanded.rawValue
 
     @State private var searchText = ""
-    @State private var sessionConnectedAt: [UUID: Date] = [:]
     @State private var disconnectError: IdentifiableError?
     @State private var showNewSession = false
     /// Held here until the sheet fully dismisses, then promoted to `launchedSession`.
@@ -81,19 +79,6 @@ struct TerminalListView: View {
                 }
             }
             .searchable(text: $searchText, prompt: "Search sessions")
-            .task {
-                // Seed timestamps for any sessions already open when the view first appears
-                for id in sshService.sessions.keys where sessionConnectedAt[id] == nil {
-                    sessionConnectedAt[id] = .now
-                }
-            }
-            .onChange(of: sessionIDs) { oldIDs, newIDs in
-                let added   = Set(newIDs).subtracting(oldIDs)
-                let removed = Set(oldIDs).subtracting(newIDs)
-
-                for id in added   where sessionConnectedAt[id] == nil { sessionConnectedAt[id] = .now }
-                for id in removed { sessionConnectedAt.removeValue(forKey: id) }
-            }
             .alert("Disconnect Error", isPresented: Binding(
                 get: { disconnectError != nil },
                 set: { if !$0 { disconnectError = nil } }
@@ -138,7 +123,7 @@ struct TerminalListView: View {
                         session: session,
                         status: sshService.status(for: session.serverID),
                         server: serversByID[session.serverID],
-                        connectedAt: sessionConnectedAt[session.serverID] ?? .now,
+                        connectedAt: session.createdAt,
                         style: cardStyle
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -214,15 +199,19 @@ struct TerminalListView: View {
         nonmutating set { cardStyleRawValue = newValue.rawValue }
     }
 
-    private var sessionIDs: [UUID] {
-        Array(sshService.sessions.keys).sorted()
-    }
-
     private var filteredSessions: [SSHSession] {
-        let all = Array(sshService.sessions.values)
+        let all = Array(sshService.sessions.values).sorted { lhs, rhs in
+            if lhs.createdAt == rhs.createdAt {
+                return lhs.id.uuidString > rhs.id.uuidString
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
         guard !searchText.isEmpty else { return all }
         let query = searchText.lowercased()
-        return all.filter { $0.serverName.lowercased().contains(query) }
+        return all.filter {
+            $0.serverName.lowercased().contains(query) ||
+            $0.displayTitle.lowercased().contains(query)
+        }
     }
 
     private var serversByID: [UUID: Server] {
@@ -231,7 +220,7 @@ struct TerminalListView: View {
 
     private func disconnect(_ session: SSHSession) {
         withAnimation {
-            sshService.disconnect(serverID: session.serverID)
+            sshService.disconnect(sessionID: session.id)
         }
     }
 }
