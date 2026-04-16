@@ -21,7 +21,7 @@ struct TerminalSessionCardView: View {
     let status: ConnectionStatus
     let server: Server?
     let connectedAt: Date
-    var style: TerminalCardStyle = .expanded
+    var style: TerminalCardStyle = .compact
 
     var body: some View {
         switch style {
