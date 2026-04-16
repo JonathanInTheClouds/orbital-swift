@@ -40,7 +40,7 @@ struct TerminalSessionCardView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(session.serverName)
+                        Text(session.displayTitle)
                             .font(.headline.weight(.semibold))
                             .lineLimit(1)
                         Spacer(minLength: 8)
@@ -129,7 +129,7 @@ struct TerminalSessionCardView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(session.serverName)
+                        Text(session.displayTitle)
                             .font(.headline.weight(.semibold))
                             .lineLimit(1)
                         Spacer(minLength: 8)
