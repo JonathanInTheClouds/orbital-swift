@@ -54,7 +54,7 @@ struct ServerCardView: View {
     let latestSnapshot: MetricSnapshot?
     let isPolling: Bool
     let lastError: String?
-    var style: ServerCardStyle = .expanded
+    var style: ServerCardStyle = .compact
 
     var body: some View {
         Group {

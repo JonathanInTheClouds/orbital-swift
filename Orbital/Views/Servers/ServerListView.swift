@@ -13,7 +13,7 @@ struct ServerListView: View {
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
 
-    @AppStorage("serverListCardStyle") private var cardStyleRawValue = ServerCardStyle.expanded.rawValue
+    @AppStorage("serverCardStyleByServerID") private var cardStyleStorage = ""
 
     @Query(sort: \Server.name) private var servers: [Server]
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
@@ -36,26 +36,6 @@ struct ServerListView: View {
             .background(listBackground)
             .navigationTitle("Servers")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Section("Card Layout") {
-                            Button {
-                                cardStyle = .expanded
-                            } label: {
-                                Label("Detailed", systemImage: cardStyle == .expanded ? "checkmark.circle.fill" : "rectangle.grid.1x2")
-                            }
-
-                            Button {
-                                cardStyle = .compact
-                            } label: {
-                                Label("Condensed", systemImage: cardStyle == .compact ? "checkmark.circle.fill" : "rectangle.compress.vertical")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: cardStyle == .expanded ? "rectangle.grid.1x2" : "rectangle.compress.vertical")
-                    }
-                }
-
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showAddServer = true
@@ -102,13 +82,25 @@ struct ServerListView: View {
                         latestSnapshot: latestSnapshot(for: server.id),
                         isPolling: metricsPollingService.isPolling(serverID: server.id),
                         lastError: metricsPollingService.lastError(for: server.id),
-                        style: cardStyle
+                        style: cardStyle(for: server.id)
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .swipeActions(edge: .leading) {
+                    Button {
+                        toggleCardStyle(for: server.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: server.id) == .expanded ? "Condense" : "Detail",
+                            systemImage: cardStyle(for: server.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+                    .tint(.indigo)
+
                     Button {
                         Task { await connectToServer(server) }
                     } label: {
@@ -131,6 +123,19 @@ struct ServerListView: View {
                     .tint(.orange)
                 }
                 .contextMenu {
+                    Button {
+                        toggleCardStyle(for: server.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: server.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
+                            systemImage: cardStyle(for: server.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+
+                    Divider()
+
                     Button {
                         Task { await connectToServer(server) }
                     } label: {
@@ -197,9 +202,8 @@ struct ServerListView: View {
         servers.map(\.id)
     }
 
-    private var cardStyle: ServerCardStyle {
-        get { ServerCardStyle(rawValue: cardStyleRawValue) ?? .expanded }
-        nonmutating set { cardStyleRawValue = newValue.rawValue }
+    private var cardStylesByServerID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
     }
 
     private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
@@ -255,8 +259,27 @@ struct ServerListView: View {
         }
     }
 
+    private func cardStyle(for serverID: UUID) -> ServerCardStyle {
+        guard let rawValue = cardStylesByServerID[serverID.uuidString],
+              let style = ServerCardStyle(rawValue: rawValue) else {
+            return .compact
+        }
+
+        return style
+    }
+
+    private func toggleCardStyle(for serverID: UUID) {
+        let nextStyle: ServerCardStyle = cardStyle(for: serverID) == .expanded ? .compact : .expanded
+        var styles = cardStylesByServerID
+        styles[serverID.uuidString] = nextStyle.rawValue
+        cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+
     private func delete(_ server: Server) {
         withAnimation {
+            var styles = cardStylesByServerID
+            styles.removeValue(forKey: server.id.uuidString)
+            cardStyleStorage = CardStylePreferenceStore.write(styles)
             modelContext.delete(server)
         }
     }
