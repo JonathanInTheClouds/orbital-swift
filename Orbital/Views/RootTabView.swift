@@ -19,13 +19,13 @@ struct RootTabView: View {
         TabView(selection: $selectedTab) {
             ServerListView()
                 .tabItem {
-                    Label("Servers", systemImage: "server.rack")
+                    Label("Servers", systemImage: "square.3.layers.3d")
                 }
                 .tag(Tab.servers)
 
             TerminalListView()
                 .tabItem {
-                    Label("Terminal", systemImage: "terminal")
+                    Label("Terminal", systemImage: "apple.terminal.on.rectangle")
                 }
                 .tag(Tab.terminal)
 
@@ -37,7 +37,7 @@ struct RootTabView: View {
 
             SettingsView()
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape")
+                    Label("Settings", systemImage: "gear")
                 }
                 .tag(Tab.settings)
         }
