@@ -60,7 +60,13 @@ struct TerminalNewSessionSheet: View {
                 } label: {
                     ConnectServerRow(
                         server: server,
-                        status: sshService.status(for: server.id),
+                        status: serverDisplayStatus(
+                            sessionStatus: sshService.status(for: server.id),
+                            lastReachableAt: [server.lastSeenAt, sshService.lastReachableAt(for: server.id)]
+                                .compactMap { $0 }
+                                .max()
+                        ),
+                        activeSessionCount: sshService.activeSessionCount(for: server.id),
                         isConnecting: connectingID == server.id
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -124,13 +130,7 @@ struct TerminalNewSessionSheet: View {
         connectingID = server.id
         defer { connectingID = nil }
         do {
-            let session: SSHSession
-            if sshService.status(for: server.id) == .connected,
-               let existing = sshService.session(for: server.id) {
-                session = existing
-            } else {
-                session = try await sshService.connect(to: server)
-            }
+            let session = try await sshService.createSession(to: server)
             onConnect(session)
             dismiss()
         } catch {
@@ -144,6 +144,7 @@ struct TerminalNewSessionSheet: View {
 private struct ConnectServerRow: View {
     let server: Server
     let status: ConnectionStatus
+    let activeSessionCount: Int
     let isConnecting: Bool
 
     var body: some View {
@@ -191,8 +192,8 @@ private struct ConnectServerRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    if status == .connected {
-                        Text("Session open")
+                    if activeSessionCount > 0 {
+                        Text(activeSessionCount == 1 ? "1 Session" : "\(activeSessionCount) Sessions")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.green)
                             .padding(.horizontal, 8)

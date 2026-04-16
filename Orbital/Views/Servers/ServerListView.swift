@@ -249,7 +249,7 @@ struct ServerListView: View {
 
     private func connectToServer(_ server: Server) async {
         do {
-            _ = try await sshService.connect(to: server)
+            _ = try await sshService.createSession(to: server)
         } catch {
             connectError = IdentifiableError(message: error.localizedDescription)
         }
