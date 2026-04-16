@@ -109,6 +109,19 @@ struct ServerDetailView: View {
         sshService.status(for: server.id)
     }
 
+    private var displayStatus: ConnectionStatus {
+        serverDisplayStatus(
+            sessionStatus: currentStatus,
+            lastReachableAt: [
+                server.lastSeenAt,
+                metricsPollingService.lastRecordedAt(for: server.id),
+                sshService.lastReachableAt(for: server.id)
+            ]
+            .compactMap { $0 }
+            .max()
+        )
+    }
+
     private var orderedSections: [ServerDetailSection] {
         ServerDetailSection.sanitized(from: server.detailSectionOrder)
     }
@@ -159,7 +172,7 @@ struct ServerDetailView: View {
 
                 Spacer()
 
-                StatusBadge(status: currentStatus)
+                StatusBadge(status: displayStatus)
             }
 
             if !server.tags.isEmpty {

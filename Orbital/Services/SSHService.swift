@@ -319,6 +319,7 @@ final class SSHService {
 
     private(set) var statuses: [UUID: ConnectionStatus] = [:]
     private(set) var sessions: [UUID: SSHSession] = [:]
+    private(set) var lastReachableAtByServerID: [UUID: Date] = [:]
 
     func status(for serverID: UUID) -> ConnectionStatus {
         statuses[serverID] ?? .disconnected
@@ -326,6 +327,10 @@ final class SSHService {
 
     func session(for serverID: UUID) -> SSHSession? {
         sessions[serverID]
+    }
+
+    func lastReachableAt(for serverID: UUID) -> Date? {
+        lastReachableAtByServerID[serverID]
     }
 
     // MARK: Connect
@@ -340,6 +345,7 @@ final class SSHService {
             let session = try await backend.connect(to: target, initialTerminalSize: initialTerminalSize)
             sessions[server.id] = session
             statuses[server.id] = .connected
+            lastReachableAtByServerID[server.id] = .now
             return session
         } catch {
             let presentableError = backend.presentableError(from: error)
@@ -359,6 +365,7 @@ final class SSHService {
                 using: backend
             )
             statuses[server.id] = .connected
+            lastReachableAtByServerID[server.id] = .now
             return result
         } catch {
             let presentableError = backend.presentableError(from: error)

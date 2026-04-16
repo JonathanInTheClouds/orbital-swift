@@ -98,7 +98,7 @@ struct ServerListView: View {
                 } label: {
                     ServerCardView(
                         server: server,
-                        status: sshService.status(for: server.id),
+                        status: displayStatus(for: server),
                         latestSnapshot: latestSnapshot(for: server.id),
                         isPolling: metricsPollingService.isPolling(serverID: server.id),
                         lastError: metricsPollingService.lastError(for: server.id),
@@ -228,6 +228,23 @@ struct ServerListView: View {
 
     private func latestSnapshot(for serverID: UUID) -> MetricSnapshot? {
         latestSnapshotByServerID[serverID]
+    }
+
+    private func displayStatus(for server: Server) -> ConnectionStatus {
+        serverDisplayStatus(
+            sessionStatus: sshService.status(for: server.id),
+            lastReachableAt: lastReachableAt(for: server)
+        )
+    }
+
+    private func lastReachableAt(for server: Server) -> Date? {
+        [
+            server.lastSeenAt,
+            metricsPollingService.lastRecordedAt(for: server.id),
+            sshService.lastReachableAt(for: server.id)
+        ]
+        .compactMap { $0 }
+        .max()
     }
 
     private func connectToServer(_ server: Server) async {
