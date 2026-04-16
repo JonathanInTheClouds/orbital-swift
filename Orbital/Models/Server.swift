@@ -8,6 +8,28 @@
 import Foundation
 import SwiftData
 
+enum ServerOSKind: String, Codable, CaseIterable, Sendable {
+    case unknown
+    case linux
+    case darwin
+
+    var displayName: String {
+        switch self {
+        case .unknown: return "Unknown"
+        case .linux:   return "Linux"
+        case .darwin:  return "macOS"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .unknown: return "questionmark.circle"
+        case .linux:   return "server.rack"
+        case .darwin:  return "apple.logo"
+        }
+    }
+}
+
 enum AuthMethod: String, Codable, CaseIterable, Sendable {
     case password = "password"
     case privateKey = "privateKey"
@@ -44,6 +66,8 @@ final class Server {
     var selectedVolumeMountPoints: [String]
     var detailSectionOrder: [String]
     var metricsSectionOrder: [String]
+    /// Detected OS; populated automatically on the first successful metrics poll
+    var osKind: ServerOSKind
     var createdAt: Date
     var lastSeenAt: Date?
 
@@ -63,6 +87,7 @@ final class Server {
         selectedVolumeMountPoints: [String] = [],
         detailSectionOrder: [String] = ["metrics", "connection", "details", "monitoring", "actions"],
         metricsSectionOrder: [String] = ["overview", "vitals", "history", "containers", "system", "disks"],
+        osKind: ServerOSKind = .unknown,
         createdAt: Date = Date(),
         lastSeenAt: Date? = nil
     ) {
@@ -81,6 +106,7 @@ final class Server {
         self.selectedVolumeMountPoints = selectedVolumeMountPoints
         self.detailSectionOrder = detailSectionOrder
         self.metricsSectionOrder = metricsSectionOrder
+        self.osKind = osKind
         self.createdAt = createdAt
         self.lastSeenAt = lastSeenAt
     }
