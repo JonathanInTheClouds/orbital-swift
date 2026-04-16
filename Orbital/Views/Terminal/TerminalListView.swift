@@ -13,7 +13,7 @@ struct TerminalListView: View {
 
     @Query(sort: \Server.name) private var servers: [Server]
 
-    @AppStorage("terminalListCardStyle") private var cardStyleRawValue = TerminalCardStyle.expanded.rawValue
+    @AppStorage("terminalCardStyleBySessionID") private var cardStyleStorage = ""
 
     @State private var searchText = ""
     @State private var disconnectError: IdentifiableError?
@@ -41,40 +41,6 @@ struct TerminalListView: View {
                         showNewSession = true
                     } label: {
                         Image(systemName: "plus")
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Section("Card Layout") {
-                            Button {
-                                cardStyle = .expanded
-                            } label: {
-                                Label(
-                                    "Detailed",
-                                    systemImage: cardStyle == .expanded
-                                        ? "checkmark.circle.fill"
-                                        : "rectangle.grid.1x2"
-                                )
-                            }
-
-                            Button {
-                                cardStyle = .compact
-                            } label: {
-                                Label(
-                                    "Condensed",
-                                    systemImage: cardStyle == .compact
-                                        ? "checkmark.circle.fill"
-                                        : "rectangle.compress.vertical"
-                                )
-                            }
-                        }
-                    } label: {
-                        Image(
-                            systemName: cardStyle == .expanded
-                                ? "rectangle.grid.1x2"
-                                : "rectangle.compress.vertical"
-                        )
                     }
                 }
             }
@@ -124,13 +90,25 @@ struct TerminalListView: View {
                         status: sshService.status(for: session.serverID),
                         server: serversByID[session.serverID],
                         connectedAt: session.createdAt,
-                        style: cardStyle
+                        style: cardStyle(for: session.id)
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .swipeActions(edge: .trailing) {
+                    Button {
+                        toggleCardStyle(for: session.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: session.id) == .expanded ? "Condense" : "Detail",
+                            systemImage: cardStyle(for: session.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+                    .tint(.indigo)
+
                     Button(role: .destructive) {
                         disconnect(session)
                     } label: {
@@ -138,6 +116,19 @@ struct TerminalListView: View {
                     }
                 }
                 .contextMenu {
+                    Button {
+                        toggleCardStyle(for: session.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: session.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
+                            systemImage: cardStyle(for: session.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+
+                    Divider()
+
                     Button {
                         // Navigate handled by NavigationLink — open terminal from context menu
                     } label: {
@@ -194,9 +185,8 @@ struct TerminalListView: View {
         .ignoresSafeArea()
     }
 
-    private var cardStyle: TerminalCardStyle {
-        get { TerminalCardStyle(rawValue: cardStyleRawValue) ?? .expanded }
-        nonmutating set { cardStyleRawValue = newValue.rawValue }
+    private var cardStylesBySessionID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
     }
 
     private var filteredSessions: [SSHSession] {
@@ -218,8 +208,27 @@ struct TerminalListView: View {
         Dictionary(uniqueKeysWithValues: servers.map { ($0.id, $0) })
     }
 
+    private func cardStyle(for sessionID: UUID) -> TerminalCardStyle {
+        guard let rawValue = cardStylesBySessionID[sessionID.uuidString],
+              let style = TerminalCardStyle(rawValue: rawValue) else {
+            return .compact
+        }
+
+        return style
+    }
+
+    private func toggleCardStyle(for sessionID: UUID) {
+        let nextStyle: TerminalCardStyle = cardStyle(for: sessionID) == .expanded ? .compact : .expanded
+        var styles = cardStylesBySessionID
+        styles[sessionID.uuidString] = nextStyle.rawValue
+        cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+
     private func disconnect(_ session: SSHSession) {
         withAnimation {
+            var styles = cardStylesBySessionID
+            styles.removeValue(forKey: session.id.uuidString)
+            cardStyleStorage = CardStylePreferenceStore.write(styles)
             sshService.disconnect(sessionID: session.id)
         }
     }
