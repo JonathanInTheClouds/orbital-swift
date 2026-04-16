@@ -163,27 +163,69 @@ struct ServerListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 56))
-                .foregroundStyle(.tertiary)
+        GeometryReader { proxy in
+            VStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(accentColor.opacity(0.14))
+                        .frame(width: 88, height: 88)
 
-            Text("No Servers")
-                .font(.title2)
-                .fontWeight(.semibold)
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                }
 
-            Text("Tap + to add your first Linux server.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    Text("No Servers Yet")
+                        .font(.title2.weight(.bold))
 
-            Button("Add Server") {
-                showAddServer = true
+                    Text("Add your first machine to start monitoring metrics, launching terminals, and managing everything from one place.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                VStack(spacing: 12) {
+                    Button {
+                        showAddServer = true
+                    } label: {
+                        Label("Add Your First Server", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    HStack(spacing: 8) {
+                        emptyStatePill("SSH Access", tint: accentColor)
+                        emptyStatePill("Live Metrics", tint: .cyan)
+                        emptyStatePill("Saved Sessions", tint: .indigo)
+                    }
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 28)
+            .frame(maxWidth: 440)
+            .background {
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accentColor.opacity(0.18),
+                                accentColor.opacity(0.05),
+                                Color(uiColor: .secondarySystemBackground)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 32, style: .continuous)
+                            .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 20)
+            .padding(.top, proxy.size.height * 0.12)
         }
-        .padding()
     }
 
     // MARK: - Helpers
@@ -232,6 +274,10 @@ struct ServerListView: View {
 
     private func latestSnapshot(for serverID: UUID) -> MetricSnapshot? {
         latestSnapshotByServerID[serverID]
+    }
+
+    private var accentColor: Color {
+        .teal
     }
 
     private func displayStatus(for server: Server) -> ConnectionStatus {
@@ -283,6 +329,15 @@ struct ServerListView: View {
             modelContext.delete(server)
         }
     }
+}
+
+private func emptyStatePill(_ label: String, tint: Color) -> some View {
+    Text(label)
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.12), in: Capsule())
 }
 
 // MARK: - Helpers
