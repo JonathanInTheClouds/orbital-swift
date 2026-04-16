@@ -164,67 +164,71 @@ struct ServerListView: View {
 
     private var emptyState: some View {
         GeometryReader { proxy in
-            VStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(accentColor.opacity(0.14))
-                        .frame(width: 88, height: 88)
+            ScrollView {
+                VStack(spacing: 18) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(accentColor.opacity(0.14))
+                            .frame(width: 88, height: 88)
 
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 34, weight: .semibold))
-                        .foregroundStyle(accentColor)
-                }
-
-                VStack(spacing: 8) {
-                    Text("No Servers Yet")
-                        .font(.title2.weight(.bold))
-
-                    Text("Add your first machine to start monitoring metrics, launching terminals, and managing everything from one place.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                VStack(spacing: 12) {
-                    Button {
-                        showAddServer = true
-                    } label: {
-                        Label("Add Your First Server", systemImage: "plus")
-                            .frame(maxWidth: .infinity)
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(accentColor)
                     }
-                    .buttonStyle(.borderedProminent)
 
-                    HStack(spacing: 8) {
-                        emptyStatePill("SSH Access", tint: accentColor)
-                        emptyStatePill("Live Metrics", tint: .cyan)
-                        emptyStatePill("Saved Sessions", tint: .indigo)
+                    VStack(spacing: 8) {
+                        Text("No Servers Yet")
+                            .font(.title2.weight(.bold))
+
+                        Text("Add your first machine to start monitoring metrics, launching terminals, and managing everything from one place.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    VStack(spacing: 12) {
+                        Button {
+                            showAddServer = true
+                        } label: {
+                            Label("Add Your First Server", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        HStack(spacing: 8) {
+                            emptyStatePill("SSH Access", tint: accentColor)
+                            emptyStatePill("Live Metrics", tint: .cyan)
+                            emptyStatePill("Saved Sessions", tint: .indigo)
+                        }
                     }
                 }
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 28)
-            .frame(maxWidth: 440)
-            .background {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                accentColor.opacity(0.18),
-                                accentColor.opacity(0.05),
-                                Color(uiColor: .secondarySystemBackground)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                .padding(.horizontal, 24)
+                .padding(.vertical, 28)
+                .frame(maxWidth: 440)
+                .background {
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    accentColor.opacity(0.18),
+                                    accentColor.opacity(0.05),
+                                    Color(uiColor: .secondarySystemBackground)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 32, style: .continuous)
-                            .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-                    }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.top, proxy.size.height * 0.12)
+                .padding(.bottom, 32)
+                .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 20)
-            .padding(.top, proxy.size.height * 0.12)
         }
     }
 
