@@ -25,7 +25,7 @@ struct RootTabView: View {
 
             TerminalListView()
                 .tabItem {
-                    Label("Terminal", systemImage: "apple.terminal.on.rectangle")
+                    Label("Terminals", systemImage: "apple.terminal.on.rectangle")
                 }
                 .tag(Tab.terminal)
 
