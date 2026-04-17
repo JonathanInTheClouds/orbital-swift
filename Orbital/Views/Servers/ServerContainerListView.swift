@@ -32,11 +32,10 @@ struct ServerContainerListView: View {
         List {
             if let latestSnapshot {
                 Section {
-                    LabeledContent("Runtime", value: latestSnapshot.containerRuntime.displayName)
-                    LabeledContent("Reachable", value: latestSnapshot.containerRuntimeReachable ? "Yes" : "No")
-                    LabeledContent("Running", value: "\(latestSnapshot.runningContainerCount)")
-                    LabeledContent("Total", value: "\(latestSnapshot.containerStatuses.count)")
+                    containerSummaryCard(for: latestSnapshot)
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
                 if latestSnapshot.containerStatuses.isEmpty {
                     Section {
@@ -123,6 +122,72 @@ struct ServerContainerListView: View {
         return 5
     }
 
+    private func containerSummaryCard(for snapshot: MetricSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(.indigo.opacity(0.16))
+                        .frame(width: 56, height: 56)
+
+                    Image(systemName: "shippingbox")
+                        .font(.title3)
+                        .foregroundStyle(.indigo)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Container Runtime")
+                            .font(.headline.weight(.semibold))
+
+                        Spacer(minLength: 8)
+
+                        Text(snapshot.containerRuntime.displayName)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.indigo)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(.indigo.opacity(0.12), in: Capsule())
+                    }
+
+                    Text(server.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Text(snapshot.containerRuntimeReachable ? "Runtime reachable" : "Runtime unavailable")
+                        .font(.caption2)
+                        .foregroundStyle(snapshot.containerRuntimeReachable ? .green : .secondary)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
+                SummaryTile(label: "REACHABLE", value: snapshot.containerRuntimeReachable ? "Yes" : "No")
+                SummaryTile(label: "RUNNING", value: "\(snapshot.runningContainerCount)")
+                SummaryTile(label: "TOTAL", value: "\(snapshot.containerStatuses.count)")
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.indigo.opacity(0.18),
+                            Color.indigo.opacity(0.06),
+                            Color(uiColor: .secondarySystemBackground)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
+        }
+    }
+
     // MARK: - Card Style
 
     private func entryID(for container: ContainerStatusSnapshot) -> String {
@@ -146,5 +211,28 @@ struct ServerContainerListView: View {
         var styles = cardStylesByEntryID
         styles[key] = next.rawValue
         cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+}
+
+private struct SummaryTile: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.secondary.opacity(0.10))
+        }
     }
 }
