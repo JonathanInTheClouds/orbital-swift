@@ -30,6 +30,22 @@ enum ServerCardStyle: String {
     case compact
 }
 
+private let serverPresenceGracePeriod: TimeInterval = 120
+
+func serverDisplayStatus(
+    sessionStatus: ConnectionStatus,
+    lastReachableAt: Date?,
+    now: Date = .now
+) -> ConnectionStatus {
+    switch sessionStatus {
+    case .connecting, .connected, .error:
+        return sessionStatus
+    case .disconnected:
+        guard let lastReachableAt else { return .disconnected }
+        return now.timeIntervalSince(lastReachableAt) <= serverPresenceGracePeriod ? .connected : .disconnected
+    }
+}
+
 // MARK: - Card
 
 struct ServerCardView: View {
@@ -38,7 +54,7 @@ struct ServerCardView: View {
     let latestSnapshot: MetricSnapshot?
     let isPolling: Bool
     let lastError: String?
-    var style: ServerCardStyle = .expanded
+    var style: ServerCardStyle = .compact
 
     var body: some View {
         Group {

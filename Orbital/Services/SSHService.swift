@@ -170,11 +170,13 @@ final class SSHSession: Identifiable {
     let id: UUID = UUID()
     let serverID: UUID
     let serverName: String
+    let createdAt: Date
 
-    /// Raw bytes arriving from the remote shell. Finishes when the connection drops.
-    let outputStream: AsyncStream<Data>
+    var displayTitle: String
 
     private let transport: any SSHSessionTransport
+    private let outputBuffer = SSHSessionOutputBuffer()
+    private let outputRelayTask: Task<Void, Never>
 
     init(
         serverID: UUID,
@@ -184,8 +186,29 @@ final class SSHSession: Identifiable {
     ) {
         self.serverID = serverID
         self.serverName = serverName
+        self.createdAt = .now
+        self.displayTitle = serverName
         self.transport = transport
-        self.outputStream = outputStream
+        self.outputRelayTask = Task { [outputBuffer] in
+            for await chunk in outputStream {
+                await outputBuffer.publish(chunk)
+            }
+            await outputBuffer.finish()
+        }
+    }
+
+    deinit {
+        outputRelayTask.cancel()
+        let outputBuffer = outputBuffer
+        Task {
+            await outputBuffer.finish()
+        }
+    }
+
+    /// Raw bytes arriving from the remote shell, prefixed with any buffered output
+    /// already seen by this session so terminal views can reopen without rendering blank.
+    var outputStream: AsyncStream<Data> {
+        outputBuffer.makeStream()
     }
 
     func write(_ data: Data) {
@@ -197,7 +220,72 @@ final class SSHSession: Identifiable {
     }
 
     func close() {
+        outputRelayTask.cancel()
+        let outputBuffer = outputBuffer
+        Task {
+            await outputBuffer.finish()
+        }
         transport.close()
+    }
+}
+
+private actor SSHSessionOutputBuffer {
+    private var history = Data()
+    private var continuations: [UUID: AsyncStream<Data>.Continuation] = [:]
+    private var isFinished = false
+
+    nonisolated func makeStream() -> AsyncStream<Data> {
+        let streamID = UUID()
+        return AsyncStream { [weak self] continuation in
+            guard let self else {
+                continuation.finish()
+                return
+            }
+            Task {
+                await self.register(continuation, id: streamID)
+            }
+        }
+    }
+
+    func publish(_ chunk: Data) {
+        guard !isFinished else { return }
+        history.append(chunk)
+        for continuation in continuations.values {
+            continuation.yield(chunk)
+        }
+    }
+
+    func finish() {
+        guard !isFinished else { return }
+        isFinished = true
+        for continuation in continuations.values {
+            continuation.finish()
+        }
+        continuations.removeAll()
+    }
+
+    private func register(_ continuation: AsyncStream<Data>.Continuation, id: UUID) {
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            Task {
+                await self.removeContinuation(id: id)
+            }
+        }
+
+        if !history.isEmpty {
+            continuation.yield(history)
+        }
+
+        if isFinished {
+            continuation.finish()
+            return
+        }
+
+        continuations[id] = continuation
+    }
+
+    private func removeContinuation(id: UUID) {
+        continuations.removeValue(forKey: id)
     }
 }
 
@@ -236,33 +324,72 @@ final class SSHService {
 
     private(set) var statuses: [UUID: ConnectionStatus] = [:]
     private(set) var sessions: [UUID: SSHSession] = [:]
+    private(set) var lastReachableAtByServerID: [UUID: Date] = [:]
+    private var nextSessionSequenceByServerID: [UUID: Int] = [:]
 
     func status(for serverID: UUID) -> ConnectionStatus {
-        statuses[serverID] ?? .disconnected
+        if activeSessionCount(for: serverID) > 0 {
+            return .connected
+        }
+        return statuses[serverID] ?? .disconnected
     }
 
-    func session(for serverID: UUID) -> SSHSession? {
-        sessions[serverID]
+    func sessions(for serverID: UUID) -> [SSHSession] {
+        sessions.values
+            .filter { $0.serverID == serverID }
+            .sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt {
+                    return lhs.id.uuidString > rhs.id.uuidString
+                }
+                return lhs.createdAt > rhs.createdAt
+            }
+    }
+
+    func mostRecentSession(for serverID: UUID) -> SSHSession? {
+        sessions(for: serverID).first
+    }
+
+    func activeSessionCount(for serverID: UUID) -> Int {
+        sessions.values.lazy.filter { $0.serverID == serverID }.count
+    }
+
+    func lastReachableAt(for serverID: UUID) -> Date? {
+        lastReachableAtByServerID[serverID]
     }
 
     // MARK: Connect
+
+    func createSession(
+        to server: Server,
+        initialTerminalSize: SSHTerminalSize = .default
+    ) async throws -> SSHSession {
+        let hadActiveSessions = activeSessionCount(for: server.id) > 0
+        if !hadActiveSessions {
+            statuses[server.id] = .connecting
+        }
+
+        do {
+            let target = SSHConnectionTarget(server: server)
+            let session = try await backend.connect(to: target, initialTerminalSize: initialTerminalSize)
+            session.displayTitle = nextSessionDisplayTitle(for: server)
+            sessions[session.id] = session
+            statuses[server.id] = .connected
+            lastReachableAtByServerID[server.id] = .now
+            return session
+        } catch {
+            let presentableError = backend.presentableError(from: error)
+            if !hadActiveSessions {
+                statuses[server.id] = .error(presentableError.localizedDescription)
+            }
+            throw presentableError
+        }
+    }
 
     func connect(
         to server: Server,
         initialTerminalSize: SSHTerminalSize = .default
     ) async throws -> SSHSession {
-        statuses[server.id] = .connecting
-        do {
-            let target = SSHConnectionTarget(server: server)
-            let session = try await backend.connect(to: target, initialTerminalSize: initialTerminalSize)
-            sessions[server.id] = session
-            statuses[server.id] = .connected
-            return session
-        } catch {
-            let presentableError = backend.presentableError(from: error)
-            statuses[server.id] = .error(presentableError.localizedDescription)
-            throw presentableError
-        }
+        try await createSession(to: server, initialTerminalSize: initialTerminalSize)
     }
 
     func runCommand(
@@ -276,10 +403,11 @@ final class SSHService {
                 using: backend
             )
             statuses[server.id] = .connected
+            lastReachableAtByServerID[server.id] = .now
             return result
         } catch {
             let presentableError = backend.presentableError(from: error)
-            if sessions[server.id] == nil {
+            if activeSessionCount(for: server.id) == 0 {
                 statuses[server.id] = .error(presentableError.localizedDescription)
             }
             throw presentableError
@@ -301,9 +429,21 @@ final class SSHService {
 
     // MARK: Disconnect
 
+    func disconnect(sessionID: UUID) {
+        guard let session = sessions.removeValue(forKey: sessionID) else { return }
+        session.close()
+
+        if activeSessionCount(for: session.serverID) == 0 {
+            statuses[session.serverID] = .disconnected
+        }
+    }
+
     func disconnect(serverID: UUID) {
-        sessions[serverID]?.close()
-        sessions.removeValue(forKey: serverID)
+        let sessionsToClose = sessions(for: serverID)
+        for session in sessionsToClose {
+            session.close()
+            sessions.removeValue(forKey: session.id)
+        }
         statuses[serverID] = .disconnected
         Task {
             await commandPool.disconnect(serverID: serverID)
@@ -312,9 +452,15 @@ final class SSHService {
 
     func disconnectCommandTransport(serverID: UUID) async {
         await commandPool.disconnect(serverID: serverID)
-        if sessions[serverID] == nil {
+        if activeSessionCount(for: serverID) == 0 {
             statuses[serverID] = .disconnected
         }
+    }
+
+    private func nextSessionDisplayTitle(for server: Server) -> String {
+        let nextSequence = (nextSessionSequenceByServerID[server.id] ?? 0) + 1
+        nextSessionSequenceByServerID[server.id] = nextSequence
+        return "\(server.name) · Session \(nextSequence)"
     }
 }
 
