@@ -8,18 +8,42 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(SSHService.self) private var sshService
+
     var body: some View {
         NavigationStack {
             List {
                 Section("SSH") {
-                    LabeledContent("Engine") {
+                    LabeledContent {
                         Text("libssh")
                             .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Engine", systemImage: "cpu")
                     }
 
-                    LabeledContent("Status") {
-                        Text(LibsshBridgeLoader.isNativeBridgeAvailable ? "Ready" : "Pending")
+                    LabeledContent {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(LibsshBridgeLoader.isNativeBridgeAvailable ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(LibsshBridgeLoader.isNativeBridgeAvailable ? "Ready" : "Pending")
+                                .foregroundStyle(.secondary)
+                        }
+                    } label: {
+                        Label("Status", systemImage: "dot.radiowaves.left.and.right")
+                    }
+
+                    LabeledContent {
+                        Text("\(sshService.sessions.count)")
                             .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Active Sessions", systemImage: "terminal")
+                    }
+
+                    NavigationLink {
+                        KnownHostsView()
+                    } label: {
+                        Label("Known Hosts", systemImage: "key.horizontal")
                     }
                 }
 
