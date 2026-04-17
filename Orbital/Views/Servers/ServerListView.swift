@@ -42,6 +42,7 @@ struct ServerListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityIdentifier("servers.addToolbarButton")
                 }
             }
             .searchable(text: $searchText, prompt: "Search servers")
@@ -179,6 +180,7 @@ struct ServerListView: View {
                     VStack(spacing: 8) {
                         Text("No Servers Yet")
                             .font(.title2.weight(.bold))
+                            .accessibilityIdentifier("servers.empty.title")
 
                         Text("Add your first machine to start monitoring metrics, launching terminals, and managing everything from one place.")
                             .font(.subheadline)
@@ -194,6 +196,7 @@ struct ServerListView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("servers.empty.addButton")
 
                         HStack(spacing: 8) {
                             emptyStatePill("SSH Access", tint: accentColor)
@@ -228,6 +231,7 @@ struct ServerListView: View {
                 .padding(.top, proxy.size.height * 0.12)
                 .padding(.bottom, 32)
                 .frame(minHeight: proxy.size.height, alignment: .top)
+                .accessibilityIdentifier("servers.empty.state")
             }
         }
     }
