@@ -540,7 +540,7 @@ struct AddEditServerView: View {
         .background {
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
     }
 
