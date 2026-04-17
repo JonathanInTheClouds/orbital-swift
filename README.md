@@ -2,7 +2,7 @@
 
 **SSH client and server manager for iPhone.**
 
-Orbital lets you manage remote Linux and macOS servers from your iPhone — monitor system metrics, control Docker and Podman containers, open interactive terminals, and store credentials securely in the iOS Keychain.
+Orbital lets you manage remote Linux and macOS servers from your iPhone. It combines saved server profiles, live metrics dashboards, interactive terminal sessions, container controls, and secure credential storage in a single SwiftUI app.
 
 ![Platform](https://img.shields.io/badge/platform-iOS%2026.4%2B-blue) ![Swift](https://img.shields.io/badge/swift-5.0-orange) ![Xcode](https://img.shields.io/badge/xcode-16%2B-blue)
 
@@ -10,14 +10,15 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone — moni
 
 ## Features
 
+- **Saved Server Profiles** — Add and edit Linux or macOS hosts with passwords, pasted private keys, or stored key references
 - **SSH Terminal** — Full interactive shell sessions rendered via xterm.js with Ctrl, Tab, and arrow key support
-- **Server Monitoring** — Real-time CPU, memory, disk, network, and load average metrics with configurable polling intervals
-- **Container Management** — View, start, stop, restart, pause, and remove Docker/Podman containers
-- **SSH Key Management** — Generate ED25519 keys, import private keys, and deploy public keys to servers
-- **Credential Vault** — Passwords and SSH private keys stored securely in the iOS Keychain
-- **Known Hosts** — Host key fingerprint tracking and verification
-- **Connection Pooling** — Persistent SSH connections shared across terminal sessions and metrics polling
-- **Script Runner** — Store and execute reusable shell scripts on remote servers *(coming soon)*
+- **Server Monitoring** — Live CPU, memory, disk, network, uptime, and load metrics collected over SSH
+- **Container Management** — View, inspect, start, stop, restart, pause, and remove Docker or Podman containers
+- **SSH Key Management** — Generate ED25519 keys, import existing private keys, and deploy public keys to servers
+- **Credential Vault** — Passwords and SSH private keys stored in the iOS Keychain, with biometric unlock support for the vault
+- **Known Hosts** — Host key fingerprint tracking, mismatch detection, and manual clearing from Settings
+- **Connection Reuse** — Shared SSH transports for terminal sessions, commands, and metrics polling
+- **Script Models** — `Script` and `ScriptRun` persistence models are present for future automation work, but there is no script UI yet
 
 ---
 
@@ -56,17 +57,25 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone — moni
 
 > **Note:** A physical device is recommended for testing SSH connections to real servers.
 
+## Running Tests
+
+Run the unit test target with:
+
+```bash
+env HOME=$PWD TMPDIR=/tmp/ CLANG_MODULE_CACHE_PATH=/tmp/OrbitalModuleCache SWIFTPM_PACKAGECACHE_PATH=/tmp/OrbitalSwiftPMCache xcodebuild -project Orbital.xcodeproj -scheme Orbital -derivedDataPath /tmp/OrbitalDerivedData -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -only-testing:OrbitalTests test
+```
+
 ---
 
 ## Architecture
 
-Orbital follows a layered architecture using SwiftUI + SwiftData with `@Observable` services.
+Orbital follows a layered architecture built around SwiftUI, SwiftData, and a small set of shared environment services.
 
 ```
 Models       — SwiftData entities (Server, MetricSnapshot, Script, ScriptRun)
-Services     — SSH session management, metrics polling, Keychain, biometrics
-Views        — SwiftUI screens organized by feature (Servers, Terminals, Containers, Settings)
-Utilities    — Shared helpers (Keychain encoding, card style preferences)
+Services     — SSH session management, libssh transport, command pooling, metrics polling, Keychain, biometrics
+Views        — SwiftUI screens organized by feature (Servers, Terminals, Containers, Settings, Keys)
+Utilities    — Shared helpers for key encoding and UI preference storage
 Resources    — xterm.js web terminal assets (HTML, JS, CSS)
 ```
 
@@ -80,7 +89,7 @@ Resources    — xterm.js web terminal assets (HTML, JS, CSS)
 | Persistence | SwiftData |
 | SSH | libssh (vendored via LibsshVendor) |
 | Terminal rendering | xterm.js 6.0.0 (WKWebView) |
-| Security | iOS Keychain (Security framework) |
+| Security | iOS Keychain + LocalAuthentication |
 | Key generation | Swift Crypto (ED25519) |
 | Concurrency | Swift async/await, Actors |
 | Logging | OSLog |
@@ -106,10 +115,11 @@ Orbital/
 │   └── BiometricService.swift
 ├── Views/
 │   ├── RootTabView.swift
-│   ├── Servers/
-│   ├── Terminals/
-│   ├── Containers/
-│   └── Settings/
+│   ├── Servers/      # server list, editor, details, metrics, per-server containers
+│   ├── Terminals/    # session list, new session flow, terminal renderer
+│   ├── Containers/   # global container list and detail actions
+│   ├── Settings/     # known hosts, credential vault, SSH key settings
+│   └── Keys/         # deploy-key authorization flow
 ├── Utilities/
 │   ├── CardStylePreferenceStore.swift
 │   └── SSHPublicKeyEncoder.swift
