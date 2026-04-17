@@ -59,11 +59,13 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone. It comb
 
 ## Running Tests
 
-Run the unit test target with:
+Run the unit test target locally with:
 
 ```bash
-env HOME=$PWD TMPDIR=/tmp/ CLANG_MODULE_CACHE_PATH=/tmp/OrbitalModuleCache SWIFTPM_PACKAGECACHE_PATH=/tmp/OrbitalSwiftPMCache xcodebuild -project Orbital.xcodeproj -scheme Orbital -derivedDataPath /tmp/OrbitalDerivedData -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4' -only-testing:OrbitalTests test
+./Scripts/test.sh
 ```
+
+GitHub Actions also runs the same unit test command on every pull request and on pushes to `main`.
 
 ---
 

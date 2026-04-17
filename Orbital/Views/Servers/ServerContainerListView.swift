@@ -87,6 +87,7 @@ struct ServerContainerListView: View {
                 }
             }
         }
+        .listStyle(.plain)
         .navigationTitle("Containers")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
