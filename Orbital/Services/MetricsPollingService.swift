@@ -169,7 +169,7 @@ final class MetricsPollingService {
     }
 }
 
-private extension MetricsPollingService {
+extension MetricsPollingService {
     struct ParsedMetricsPayload {
         var cpuPercent: Double = 0
         var memUsedBytes: Int64 = 0
