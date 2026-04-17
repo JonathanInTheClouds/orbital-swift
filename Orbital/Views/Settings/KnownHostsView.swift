@@ -116,15 +116,24 @@ struct KnownHostsView: View {
         let allKeys = (try? await KeychainService.shared.allKeys()) ?? []
         let hostKeys = allKeys.filter { $0.hasPrefix("hostkey:") }
 
-        entries = hostKeys.compactMap { key in
+        var loadedEntries: [KnownHostEntry] = []
+
+        for key in hostKeys {
             let hostname = String(key.dropFirst("hostkey:".count))
-            guard !hostname.isEmpty else { return nil }
-            let fingerprint = KeychainService.shared.loadIfPresent(key: key)
+            guard !hostname.isEmpty else { continue }
+
+            let fingerprint = await KeychainService.shared.loadIfPresent(key: key)
                 .flatMap { String(data: $0, encoding: .utf8) }
                 ?? "(fingerprint unavailable)"
-            return KnownHostEntry(keychainKey: key, hostname: hostname, fingerprint: fingerprint)
+
+            loadedEntries.append(
+                KnownHostEntry(keychainKey: key, hostname: hostname, fingerprint: fingerprint)
+            )
         }
-        .sorted { $0.hostname.localizedCaseInsensitiveCompare($1.hostname) == .orderedAscending }
+
+        entries = loadedEntries.sorted {
+            $0.hostname.localizedCaseInsensitiveCompare($1.hostname) == .orderedAscending
+        }
     }
 
     private func deleteEntry(_ entry: KnownHostEntry) async {
