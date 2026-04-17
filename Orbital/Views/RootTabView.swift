@@ -41,6 +41,7 @@ struct RootTabView: View {
                 }
                 .tag(Tab.settings)
         }
+        .accessibilityIdentifier("root.tabView")
         .environment(SSHService.shared)
     }
 }

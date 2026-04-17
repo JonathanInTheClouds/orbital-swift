@@ -10,6 +10,7 @@
 .build/
 DerivedData/
 build/
+Library/
 
 # Swift Package Manager
 .swiftpm/

@@ -15,13 +15,17 @@ struct OrbitalApp: App {
 
     init() {
         let schema = Self.appSchema
-        let storeURL = Self.storeURL()
+        let storeURL = Self.isUITesting ? nil : Self.storeURL()
 
         do {
             let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
             self.sharedModelContainer = container
             self.metricsPollingService = Self.makeMetricsPollingService(container: container)
         } catch {
+            guard let storeURL else {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
+
             do {
                 try Self.archiveIncompatibleStore(at: storeURL)
                 let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
@@ -42,7 +46,11 @@ struct OrbitalApp: App {
     }
 }
 
-private extension OrbitalApp {
+extension OrbitalApp {
+    static var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    }
+
     static var appSchema: Schema {
         Schema([
             Server.self,
@@ -59,13 +67,20 @@ private extension OrbitalApp {
         )
     }
 
-    static func makeContainer(schema: Schema, storeURL: URL) throws -> ModelContainer {
-        let configuration = ModelConfiguration(
-            "OrbitalStore",
-            schema: schema,
-            url: storeURL
+    static func makeContainer(schema: Schema, storeURL: URL?) throws -> ModelContainer {
+        if let storeURL {
+            let configuration = ModelConfiguration(
+                "OrbitalStore",
+                schema: schema,
+                url: storeURL
+            )
+            return try ModelContainer(for: schema, configurations: [configuration])
+        }
+
+        return try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
     }
 
     static func storeURL() -> URL {
