@@ -14,6 +14,8 @@ struct ServerContainerListView: View {
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @Query private var snapshots: [MetricSnapshot]
 
+    @AppStorage("containerCardStyleByEntryID") private var cardStyleStorage = ""
+
     init(server: Server) {
         self.server = server
 
@@ -43,42 +45,37 @@ struct ServerContainerListView: View {
                     }
                 } else {
                     Section("Containers") {
-                        ForEach(sortedContainers, id: \.self) { container in
+                        ForEach(sortedContainers, id: \.name) { container in
                             NavigationLink {
-                                ServerContainerDetailView(
+                                ContainerDetailView(
                                     server: server,
                                     runtime: latestSnapshot.containerRuntime,
-                                    container: container
+                                    containerName: container.name,
+                                    initialContainer: container
                                 )
                             } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Circle()
-                                        .fill(containerTint(for: container))
-                                        .frame(width: 10, height: 10)
-                                        .padding(.top, 5)
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text(container.name)
-                                                .font(.subheadline.weight(.semibold))
-                                            Spacer()
-                                            Text(containerBadge(for: container))
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundStyle(containerTint(for: container))
-                                        }
-
-                                        Text(container.image)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-
-                                        Text(container.status)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
+                                ContainerCardView(
+                                    container: container,
+                                    serverName: server.name,
+                                    runtime: latestSnapshot.containerRuntime,
+                                    style: cardStyle(for: container)
+                                )
+                                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    toggleCardStyle(for: container)
+                                } label: {
+                                    Label(
+                                        cardStyle(for: container) == .expanded ? "Condense" : "Detail",
+                                        systemImage: cardStyle(for: container) == .expanded
+                                            ? "rectangle.compress.vertical"
+                                            : "rectangle.grid.1x2"
+                                    )
                                 }
-                                .padding(.vertical, 2)
+                                .tint(.indigo)
                             }
                         }
                     }
@@ -125,19 +122,28 @@ struct ServerContainerListView: View {
         return 5
     }
 
-    private func containerTint(for container: ContainerStatusSnapshot) -> Color {
-        if container.isUnhealthy { return .red }
-        if container.isRestarting { return .orange }
-        if container.isRunning { return .green }
-        if container.isPaused { return .yellow }
-        if container.isExited { return .secondary }
-        return .blue
+    // MARK: - Card Style
+
+    private func entryID(for container: ContainerStatusSnapshot) -> String {
+        "\(server.id.uuidString)_\(container.name)"
     }
 
-    private func containerBadge(for container: ContainerStatusSnapshot) -> String {
-        if let health = container.healthLabel {
-            return health
-        }
-        return container.state.capitalized
+    private var cardStylesByEntryID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
+    }
+
+    private func cardStyle(for container: ContainerStatusSnapshot) -> ContainerCardStyle {
+        let key = entryID(for: container)
+        guard let raw = cardStylesByEntryID[key],
+              let style = ContainerCardStyle(rawValue: raw) else { return .compact }
+        return style
+    }
+
+    private func toggleCardStyle(for container: ContainerStatusSnapshot) {
+        let key = entryID(for: container)
+        let next: ContainerCardStyle = cardStyle(for: container) == .expanded ? .compact : .expanded
+        var styles = cardStylesByEntryID
+        styles[key] = next.rawValue
+        cardStyleStorage = CardStylePreferenceStore.write(styles)
     }
 }

@@ -17,7 +17,7 @@ struct ServerDetailView: View {
     @State private var showEditServer = false
     @State private var showReorderSections = false
     @State private var connectError: IdentifiableError?
-    @State private var navigateToTerminal = false
+    @State private var launchedSession: SSHSession?
     @State private var pollingInterval: Double = 30
 
     var body: some View {
@@ -90,8 +90,11 @@ struct ServerDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .navigationDestination(isPresented: $navigateToTerminal) {
-            if let session = sshService.session(for: server.id) {
+        .navigationDestination(isPresented: Binding(
+            get: { launchedSession != nil },
+            set: { if !$0 { launchedSession = nil } }
+        )) {
+            if let session = launchedSession {
                 TerminalView(session: session)
             }
         }
@@ -107,6 +110,27 @@ struct ServerDetailView: View {
 
     private var currentStatus: ConnectionStatus {
         sshService.status(for: server.id)
+    }
+
+    private var activeSessionCount: Int {
+        sshService.activeSessionCount(for: server.id)
+    }
+
+    private var hasActiveSession: Bool {
+        activeSessionCount > 0
+    }
+
+    private var displayStatus: ConnectionStatus {
+        serverDisplayStatus(
+            sessionStatus: currentStatus,
+            lastReachableAt: [
+                server.lastSeenAt,
+                metricsPollingService.lastRecordedAt(for: server.id),
+                sshService.lastReachableAt(for: server.id)
+            ]
+            .compactMap { $0 }
+            .max()
+        )
     }
 
     private var orderedSections: [ServerDetailSection] {
@@ -159,7 +183,7 @@ struct ServerDetailView: View {
 
                 Spacer()
 
-                StatusBadge(status: currentStatus)
+                StatusBadge(status: displayStatus)
             }
 
             if !server.tags.isEmpty {
@@ -345,19 +369,19 @@ struct ServerDetailView: View {
                         Task { await connectAndOpenTerminal() }
                     } label: {
                         Label(
-                            currentStatus == .connected ? "Open Terminal" : "Connect & Open Terminal",
+                            hasActiveSession ? "Open New Terminal" : "Connect & Open Terminal",
                             systemImage: "terminal"
                         )
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(currentStatus == .connecting)
+                    .disabled(!hasActiveSession && currentStatus == .connecting)
 
-                    if currentStatus == .connected {
+                    if hasActiveSession {
                         Button(role: .destructive) {
                             sshService.disconnect(serverID: server.id)
                         } label: {
-                            Label("Disconnect", systemImage: "xmark.circle")
+                            Label(activeSessionCount > 1 ? "Disconnect All Sessions" : "Disconnect", systemImage: "xmark.circle")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
@@ -369,10 +393,7 @@ struct ServerDetailView: View {
 
     private func connectAndOpenTerminal() async {
         do {
-            if currentStatus != .connected {
-                _ = try await sshService.connect(to: server)
-            }
-            navigateToTerminal = true
+            launchedSession = try await sshService.createSession(to: server)
         } catch {
             connectError = IdentifiableError(message: error.localizedDescription)
         }

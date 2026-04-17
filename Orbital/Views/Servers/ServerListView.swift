@@ -13,7 +13,7 @@ struct ServerListView: View {
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
 
-    @AppStorage("serverListCardStyle") private var cardStyleRawValue = ServerCardStyle.expanded.rawValue
+    @AppStorage("serverCardStyleByServerID") private var cardStyleStorage = ""
 
     @Query(sort: \Server.name) private var servers: [Server]
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
@@ -36,26 +36,6 @@ struct ServerListView: View {
             .background(listBackground)
             .navigationTitle("Servers")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Section("Card Layout") {
-                            Button {
-                                cardStyle = .expanded
-                            } label: {
-                                Label("Detailed", systemImage: cardStyle == .expanded ? "checkmark.circle.fill" : "rectangle.grid.1x2")
-                            }
-
-                            Button {
-                                cardStyle = .compact
-                            } label: {
-                                Label("Condensed", systemImage: cardStyle == .compact ? "checkmark.circle.fill" : "rectangle.compress.vertical")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: cardStyle == .expanded ? "rectangle.grid.1x2" : "rectangle.compress.vertical")
-                    }
-                }
-
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showAddServer = true
@@ -98,17 +78,29 @@ struct ServerListView: View {
                 } label: {
                     ServerCardView(
                         server: server,
-                        status: sshService.status(for: server.id),
+                        status: displayStatus(for: server),
                         latestSnapshot: latestSnapshot(for: server.id),
                         isPolling: metricsPollingService.isPolling(serverID: server.id),
                         lastError: metricsPollingService.lastError(for: server.id),
-                        style: cardStyle
+                        style: cardStyle(for: server.id)
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .swipeActions(edge: .leading) {
+                    Button {
+                        toggleCardStyle(for: server.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: server.id) == .expanded ? "Condense" : "Detail",
+                            systemImage: cardStyle(for: server.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+                    .tint(.indigo)
+
                     Button {
                         Task { await connectToServer(server) }
                     } label: {
@@ -131,6 +123,19 @@ struct ServerListView: View {
                     .tint(.orange)
                 }
                 .contextMenu {
+                    Button {
+                        toggleCardStyle(for: server.id)
+                    } label: {
+                        Label(
+                            cardStyle(for: server.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
+                            systemImage: cardStyle(for: server.id) == .expanded
+                                ? "rectangle.compress.vertical"
+                                : "rectangle.grid.1x2"
+                        )
+                    }
+
+                    Divider()
+
                     Button {
                         Task { await connectToServer(server) }
                     } label: {
@@ -158,27 +163,73 @@ struct ServerListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 56))
-                .foregroundStyle(.tertiary)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 18) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(accentColor.opacity(0.14))
+                            .frame(width: 88, height: 88)
 
-            Text("No Servers")
-                .font(.title2)
-                .fontWeight(.semibold)
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(accentColor)
+                    }
 
-            Text("Tap + to add your first Linux server.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                    VStack(spacing: 8) {
+                        Text("No Servers Yet")
+                            .font(.title2.weight(.bold))
 
-            Button("Add Server") {
-                showAddServer = true
+                        Text("Add your first machine to start monitoring metrics, launching terminals, and managing everything from one place.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    VStack(spacing: 12) {
+                        Button {
+                            showAddServer = true
+                        } label: {
+                            Label("Add Your First Server", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        HStack(spacing: 8) {
+                            emptyStatePill("SSH Access", tint: accentColor)
+                            emptyStatePill("Live Metrics", tint: .cyan)
+                            emptyStatePill("Saved Sessions", tint: .indigo)
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 28)
+                .frame(maxWidth: 440)
+                .background {
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    accentColor.opacity(0.18),
+                                    accentColor.opacity(0.05),
+                                    Color(uiColor: .secondarySystemBackground)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
+                .padding(.top, proxy.size.height * 0.12)
+                .padding(.bottom, 32)
+                .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
         }
-        .padding()
     }
 
     // MARK: - Helpers
@@ -197,9 +248,8 @@ struct ServerListView: View {
         servers.map(\.id)
     }
 
-    private var cardStyle: ServerCardStyle {
-        get { ServerCardStyle(rawValue: cardStyleRawValue) ?? .expanded }
-        nonmutating set { cardStyleRawValue = newValue.rawValue }
+    private var cardStylesByServerID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
     }
 
     private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
@@ -230,19 +280,68 @@ struct ServerListView: View {
         latestSnapshotByServerID[serverID]
     }
 
+    private var accentColor: Color {
+        .teal
+    }
+
+    private func displayStatus(for server: Server) -> ConnectionStatus {
+        serverDisplayStatus(
+            sessionStatus: sshService.status(for: server.id),
+            lastReachableAt: lastReachableAt(for: server)
+        )
+    }
+
+    private func lastReachableAt(for server: Server) -> Date? {
+        [
+            server.lastSeenAt,
+            metricsPollingService.lastRecordedAt(for: server.id),
+            sshService.lastReachableAt(for: server.id)
+        ]
+        .compactMap { $0 }
+        .max()
+    }
+
     private func connectToServer(_ server: Server) async {
         do {
-            _ = try await sshService.connect(to: server)
+            _ = try await sshService.createSession(to: server)
         } catch {
             connectError = IdentifiableError(message: error.localizedDescription)
         }
     }
 
+    private func cardStyle(for serverID: UUID) -> ServerCardStyle {
+        guard let rawValue = cardStylesByServerID[serverID.uuidString],
+              let style = ServerCardStyle(rawValue: rawValue) else {
+            return .compact
+        }
+
+        return style
+    }
+
+    private func toggleCardStyle(for serverID: UUID) {
+        let nextStyle: ServerCardStyle = cardStyle(for: serverID) == .expanded ? .compact : .expanded
+        var styles = cardStylesByServerID
+        styles[serverID.uuidString] = nextStyle.rawValue
+        cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+
     private func delete(_ server: Server) {
         withAnimation {
+            var styles = cardStylesByServerID
+            styles.removeValue(forKey: server.id.uuidString)
+            cardStyleStorage = CardStylePreferenceStore.write(styles)
             modelContext.delete(server)
         }
     }
+}
+
+private func emptyStatePill(_ label: String, tint: Color) -> some View {
+    Text(label)
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.12), in: Capsule())
 }
 
 // MARK: - Helpers
