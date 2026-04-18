@@ -31,6 +31,7 @@ struct ContainersView: View {
     @AppStorage("containerCardStyleByEntryID") private var cardStyleStorage = ""
 
     @State private var searchText = ""
+    @State private var selectedFilter: ContainerListFilter = .all
     @State private var actionError: IdentifiableError?
 
     var body: some View {
@@ -39,7 +40,7 @@ struct ContainersView: View {
                 if allEntries.isEmpty {
                     emptyState
                 } else if filteredEntries.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    filteredEmptyState
                 } else {
                     containerList
                 }
@@ -47,6 +48,23 @@ struct ContainersView: View {
             .scrollContentBackground(.hidden)
             .background(listBackground)
             .navigationTitle("Containers")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Picker("Status", selection: $selectedFilter) {
+                            ForEach(ContainerListFilter.allCases) { filter in
+                                Label(filter.title, systemImage: filter.systemImage)
+                                    .tag(filter)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: selectedFilter == .all
+                              ? "line.3.horizontal.decrease.circle"
+                              : "line.3.horizontal.decrease.circle.fill")
+                    }
+                    .accessibilityLabel("Filter containers")
+                }
+            }
             .searchable(text: $searchText, prompt: "Search containers")
             .alert(
                 "Container Action Failed",
@@ -233,6 +251,24 @@ struct ContainersView: View {
         }
     }
 
+    private var filteredEmptyState: some View {
+        ContentUnavailableView {
+            Label("No Matching Containers", systemImage: selectedFilter == .all ? "magnifyingglass" : selectedFilter.systemImage)
+        } description: {
+            if searchText.isEmpty {
+                Text("No containers match the \(selectedFilter.title.lowercased()) filter.")
+            } else {
+                Text("No containers match “\(searchText)” with the \(selectedFilter.title.lowercased()) filter.")
+            }
+        } actions: {
+            if selectedFilter != .all {
+                Button("Show All Containers") {
+                    selectedFilter = .all
+                }
+            }
+        }
+    }
+
     // MARK: - Background
 
     private var listBackground: some View {
@@ -299,12 +335,14 @@ struct ContainersView: View {
     }
 
     private var filteredEntries: [ContainerEntry] {
-        guard !searchText.isEmpty else { return sortedEntries }
-        let q = searchText.lowercased()
-        return sortedEntries.filter {
-            $0.container.name.lowercased().contains(q) ||
-            $0.container.image.lowercased().contains(q) ||
-            $0.server.name.lowercased().contains(q)
+        sortedEntries.filter { entry in
+            guard entry.container.matches(selectedFilter) else { return false }
+            guard !searchText.isEmpty else { return true }
+
+            let q = searchText.lowercased()
+            return entry.container.name.lowercased().contains(q) ||
+                entry.container.image.lowercased().contains(q) ||
+                entry.server.name.lowercased().contains(q)
         }
     }
 

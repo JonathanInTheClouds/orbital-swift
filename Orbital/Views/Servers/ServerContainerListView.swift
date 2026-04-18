@@ -16,6 +16,9 @@ struct ServerContainerListView: View {
 
     @AppStorage("containerCardStyleByEntryID") private var cardStyleStorage = ""
 
+    @State private var searchText = ""
+    @State private var selectedFilter: ContainerListFilter = .all
+
     init(server: Server) {
         self.server = server
 
@@ -42,9 +45,30 @@ struct ServerContainerListView: View {
                         Text("No containers detected on this server.")
                             .foregroundStyle(.secondary)
                     }
+                } else if filteredContainers.isEmpty {
+                    Section {
+                        ContentUnavailableView {
+                            Label(
+                                "No Matching Containers",
+                                systemImage: selectedFilter == .all ? "magnifyingglass" : selectedFilter.systemImage
+                            )
+                        } description: {
+                            if searchText.isEmpty {
+                                Text("No containers match the \(selectedFilter.title.lowercased()) filter on this server.")
+                            } else {
+                                Text("No containers match “\(searchText)” with the \(selectedFilter.title.lowercased()) filter on this server.")
+                            }
+                        } actions: {
+                            if selectedFilter != .all {
+                                Button("Show All Containers") {
+                                    selectedFilter = .all
+                                }
+                            }
+                        }
+                    }
                 } else {
                     Section("Containers") {
-                        ForEach(sortedContainers, id: \.name) { container in
+                        ForEach(filteredContainers, id: \.name) { container in
                             NavigationLink {
                                 ContainerDetailView(
                                     server: server,
@@ -89,6 +113,24 @@ struct ServerContainerListView: View {
         .listStyle(.plain)
         .navigationTitle("Containers")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Status", selection: $selectedFilter) {
+                        ForEach(ContainerListFilter.allCases) { filter in
+                            Label(filter.title, systemImage: filter.systemImage)
+                                .tag(filter)
+                        }
+                    }
+                } label: {
+                    Image(systemName: selectedFilter == .all
+                          ? "line.3.horizontal.decrease.circle"
+                          : "line.3.horizontal.decrease.circle.fill")
+                }
+                .accessibilityLabel("Filter containers")
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search containers")
         .refreshable {
             try? await metricsPollingService.pollNow(server: server)
         }
@@ -110,6 +152,18 @@ struct ServerContainerListView: View {
             }
 
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var filteredContainers: [ContainerStatusSnapshot] {
+        sortedContainers.filter { container in
+            guard container.matches(selectedFilter) else { return false }
+            guard !searchText.isEmpty else { return true }
+
+            let query = searchText.lowercased()
+            return container.name.lowercased().contains(query) ||
+                container.image.lowercased().contains(query) ||
+                container.status.lowercased().contains(query)
         }
     }
 
