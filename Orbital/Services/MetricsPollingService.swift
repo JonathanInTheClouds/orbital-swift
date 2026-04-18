@@ -358,6 +358,8 @@ extension MetricsPollingService {
     // memory compression rather than a traditional swap partition.
 
     static let macosMetricsCommand = """
+    export PATH="/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
     ncpu=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)
     cpu_percent=$(ps -A -o pcpu= 2>/dev/null | awk -v n="$ncpu" '{sum+=$1} END {printf "%.2f", (n>0 ? sum/n : 0)}')
     echo "CPU ${cpu_percent:-0.00}"

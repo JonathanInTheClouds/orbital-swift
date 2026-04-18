@@ -13,6 +13,10 @@ func shellQuoted(_ value: String) -> String {
     "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
 }
 
+func shellCommandWithContainerRuntimePath(_ command: String) -> String {
+    "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH\"; \(command)"
+}
+
 // MARK: - Container Action
 
 enum ContainerAction: Equatable {
@@ -52,13 +56,13 @@ enum ContainerAction: Equatable {
         let rt = runtime.rawValue
         let q = shellQuoted(containerName)
         switch self {
-        case .start:   return "\(rt) start \(q)"
-        case .stop:    return "\(rt) stop \(q)"
-        case .restart: return "\(rt) restart \(q)"
-        case .pause:   return "\(rt) pause \(q)"
-        case .unpause: return "\(rt) unpause \(q)"
-        case .kill:    return "\(rt) kill \(q)"
-        case .remove:  return "\(rt) rm -f \(q)"
+        case .start:   return shellCommandWithContainerRuntimePath("\(rt) start \(q)")
+        case .stop:    return shellCommandWithContainerRuntimePath("\(rt) stop \(q)")
+        case .restart: return shellCommandWithContainerRuntimePath("\(rt) restart \(q)")
+        case .pause:   return shellCommandWithContainerRuntimePath("\(rt) pause \(q)")
+        case .unpause: return shellCommandWithContainerRuntimePath("\(rt) unpause \(q)")
+        case .kill:    return shellCommandWithContainerRuntimePath("\(rt) kill \(q)")
+        case .remove:  return shellCommandWithContainerRuntimePath("\(rt) rm -f \(q)")
         }
     }
 }
@@ -460,7 +464,9 @@ struct ContainerDetailView: View {
         defer { isLoadingLogs = false }
 
         do {
-            let cmd = "\(runtime.rawValue) logs --tail 200 \(shellQuoted(containerName)) 2>&1"
+            let cmd = shellCommandWithContainerRuntimePath(
+                "\(runtime.rawValue) logs --tail 200 \(shellQuoted(containerName)) 2>&1"
+            )
             let result = try await sshService.runCommand(cmd, on: server)
             logs = result.standardOutputString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "(no output)"
@@ -472,7 +478,9 @@ struct ContainerDetailView: View {
 
     private func containerStatusCommand(for name: String) -> String {
         let filter = "name=^/\(name)$"
-        return "\(runtime.rawValue) ps -a --filter \(shellQuoted(filter)) --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}'"
+        return shellCommandWithContainerRuntimePath(
+            "\(runtime.rawValue) ps -a --filter \(shellQuoted(filter)) --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}'"
+        )
     }
 
     private func parseContainer(from output: String, fallbackName: String) -> ContainerStatusSnapshot? {
