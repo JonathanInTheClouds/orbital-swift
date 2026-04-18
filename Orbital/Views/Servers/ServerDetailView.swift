@@ -15,7 +15,7 @@ struct ServerDetailView: View {
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @State private var showEditServer = false
-    @State private var showReorderSections = false
+    @State private var showSectionOrganizer = false
     @State private var connectError: IdentifiableError?
     @State private var launchedSession: SSHSession?
     @State private var pollingInterval: Double = 30
@@ -44,9 +44,9 @@ struct ServerDetailView: View {
         .toolbar {
             ToolbarItem(placement: .secondaryAction) {
                 Button {
-                    showReorderSections = true
+                    showSectionOrganizer = true
                 } label: {
-                    Label("Reorder Sections", systemImage: "arrow.up.arrow.down.circle")
+                    Label("Organize", systemImage: "arrow.up.arrow.down.circle")
                 }
             }
 
@@ -57,29 +57,53 @@ struct ServerDetailView: View {
         .sheet(isPresented: $showEditServer) {
             AddEditServerView(server: server)
         }
-        .sheet(isPresented: $showReorderSections) {
+        .sheet(isPresented: $showSectionOrganizer) {
             NavigationStack {
                 List {
-                    ForEach(orderedSections) { section in
-                        HStack(spacing: 12) {
-                            Image(systemName: section.systemImage)
-                                .foregroundStyle(accentColor)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(section.title)
-                                Text(section.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    Section("Page Sections") {
+                        ForEach(orderedSections) { section in
+                            HStack(spacing: 12) {
+                                Image(systemName: section.systemImage)
+                                    .foregroundStyle(accentColor)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(section.title)
+                                    Text(section.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
+                        .onMove(perform: moveDetailSections)
                     }
-                    .onMove(perform: moveSections)
+
+                    Section("Metrics Panels") {
+                        ForEach(orderedMetricSections) { section in
+                            HStack(spacing: 12) {
+                                Image(systemName: section.systemImage)
+                                    .foregroundStyle(accentColor)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(section.title)
+                                    Text(section.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .onMove(perform: moveMetricSections)
+                    }
                 }
-                .navigationTitle("Reorder Sections")
+                .navigationTitle("Organize Server")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Done") {
-                            showReorderSections = false
+                            showSectionOrganizer = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button("Reset") {
+                            resetSectionOrder()
                         }
                     }
 
@@ -135,6 +159,10 @@ struct ServerDetailView: View {
 
     private var orderedSections: [ServerDetailSection] {
         ServerDetailSection.sanitized(from: server.detailSectionOrder)
+    }
+
+    private var orderedMetricSections: [MetricDashboardSection] {
+        MetricDashboardSection.sanitized(from: server.metricsSectionOrder)
     }
 
     private var visibleSections: [ServerDetailSection] {
@@ -253,7 +281,10 @@ struct ServerDetailView: View {
     private func sectionView(for section: ServerDetailSection) -> some View {
         switch section {
         case .metrics:
-            ServerMetricsDashboardView(server: server)
+            ServerMetricsDashboardView(
+                server: server,
+                openSectionOrganizer: { showSectionOrganizer = true }
+            )
 
         case .connection:
             DetailCardSection(title: "Connection", subtitle: "Transport and authentication settings") {
@@ -407,17 +438,32 @@ struct ServerDetailView: View {
         }
     }
 
-    private func moveSections(from source: IndexSet, to destination: Int) {
+    private func moveDetailSections(from source: IndexSet, to destination: Int) {
         var updatedOrder = orderedSections
         updatedOrder.move(fromOffsets: source, toOffset: destination)
         server.detailSectionOrder = updatedOrder.map(\.rawValue)
         saveServerChanges()
     }
 
+    private func moveMetricSections(from source: IndexSet, to destination: Int) {
+        var updatedOrder = orderedMetricSections
+        updatedOrder.move(fromOffsets: source, toOffset: destination)
+        server.metricsSectionOrder = updatedOrder.map(\.rawValue)
+        saveServerChanges()
+    }
+
     private func persistSectionOrderIfNeeded() {
         let normalizedOrder = orderedSections.map(\.rawValue)
-        guard server.detailSectionOrder != normalizedOrder else { return }
+        let normalizedMetricOrder = orderedMetricSections.map(\.rawValue)
+        guard server.detailSectionOrder != normalizedOrder || server.metricsSectionOrder != normalizedMetricOrder else { return }
         server.detailSectionOrder = normalizedOrder
+        server.metricsSectionOrder = normalizedMetricOrder
+        saveServerChanges()
+    }
+
+    private func resetSectionOrder() {
+        server.detailSectionOrder = ServerDetailSection.defaultOrder.map(\.rawValue)
+        server.metricsSectionOrder = MetricDashboardSection.defaultOrder.map(\.rawValue)
         saveServerChanges()
     }
 
@@ -482,6 +528,10 @@ private enum ServerDetailSection: String, CaseIterable, Identifiable {
         case .actions:
             return "slider.horizontal.3"
         }
+    }
+
+    static var defaultOrder: [ServerDetailSection] {
+        [.metrics, .connection, .details, .monitoring, .actions]
     }
 
     static func sanitized(from rawValues: [String]) -> [ServerDetailSection] {

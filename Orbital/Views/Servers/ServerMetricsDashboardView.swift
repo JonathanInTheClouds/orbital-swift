@@ -11,15 +11,16 @@ import SwiftUI
 
 struct ServerMetricsDashboardView: View {
     let server: Server
+    var openSectionOrganizer: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(MetricsPollingService.self) private var metricsPollingService
     @Query private var snapshots: [MetricSnapshot]
-    @State private var showReorderMetrics = false
     @State private var showVolumeSelector = false
 
-    init(server: Server) {
+    init(server: Server, openSectionOrganizer: (() -> Void)? = nil) {
         self.server = server
+        self.openSectionOrganizer = openSectionOrganizer
 
         let serverID = server.id
         _snapshots = Query(
@@ -44,39 +45,6 @@ struct ServerMetricsDashboardView: View {
         }
         .task {
             persistSectionOrderIfNeeded()
-        }
-        .sheet(isPresented: $showReorderMetrics) {
-            NavigationStack {
-                List {
-                    ForEach(orderedSections) { section in
-                        HStack(spacing: 12) {
-                            Image(systemName: section.systemImage)
-                                .foregroundStyle(serverAccentColor(server.colorTag))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(section.title)
-                                Text(section.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .onMove(perform: moveSections)
-                }
-                .navigationTitle("Reorder Metrics")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") {
-                            showReorderMetrics = false
-                        }
-                    }
-
-                    ToolbarItem(placement: .topBarTrailing) {
-                        EditButton()
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showVolumeSelector) {
             NavigationStack {
@@ -261,21 +229,9 @@ struct ServerMetricsDashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text("Health Overview")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.primary)
-
-                        Button {
-                            showReorderMetrics = true
-                        } label: {
-                            Image(systemName: "arrow.up.arrow.down.circle")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(serverAccentColor(server.colorTag))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Reorder metrics sections")
-                    }
+                    Text("Health Overview")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
 
                     Text(lastUpdatedText(for: snapshot))
                         .font(.subheadline)
@@ -701,15 +657,17 @@ struct ServerMetricsDashboardView: View {
                 Text("No Metrics Yet")
                     .font(.title3.weight(.semibold))
 
-                Button {
-                    showReorderMetrics = true
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(serverAccentColor(server.colorTag))
+                if let openSectionOrganizer {
+                    Button {
+                        openSectionOrganizer()
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(serverAccentColor(server.colorTag))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Organize server sections")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Reorder metrics sections")
             }
 
             Text("Start polling or run a manual sample to populate the dashboard for this server.")
@@ -911,13 +869,6 @@ struct ServerMetricsDashboardView: View {
         return formatter
     }()
 
-    private func moveSections(from source: IndexSet, to destination: Int) {
-        var updatedOrder = orderedSections
-        updatedOrder.move(fromOffsets: source, toOffset: destination)
-        server.metricsSectionOrder = updatedOrder.map(\.rawValue)
-        saveServerChanges()
-    }
-
     private func persistSectionOrderIfNeeded() {
         let normalizedOrder = orderedSections.map(\.rawValue)
         guard server.metricsSectionOrder != normalizedOrder else { return }
@@ -971,7 +922,7 @@ struct ServerMetricsDashboardView: View {
     }
 }
 
-private enum MetricDashboardSection: String, CaseIterable, Identifiable {
+enum MetricDashboardSection: String, CaseIterable, Identifiable {
     case overview
     case vitals
     case history
@@ -1030,6 +981,10 @@ private enum MetricDashboardSection: String, CaseIterable, Identifiable {
         case .disks:
             return "internaldrive"
         }
+    }
+
+    static var defaultOrder: [MetricDashboardSection] {
+        [.overview, .vitals, .history, .containers, .system, .disks]
     }
 
     static func sanitized(from rawValues: [String]) -> [MetricDashboardSection] {
