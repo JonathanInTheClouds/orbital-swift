@@ -32,6 +32,7 @@ struct ContainersView: View {
 
     @State private var searchText = ""
     @State private var selectedFilter: ContainerListFilter = .all
+    @State private var selectedServerID: UUID?
     @State private var actionError: IdentifiableError?
 
     var body: some View {
@@ -57,8 +58,18 @@ struct ContainersView: View {
                                     .tag(filter)
                             }
                         }
+
+                        Picker("Server", selection: $selectedServerID) {
+                            Text("All Servers")
+                                .tag(Optional<UUID>.none)
+
+                            ForEach(availableServers, id: \.id) { server in
+                                Text(server.name)
+                                    .tag(Optional(server.id))
+                            }
+                        }
                     } label: {
-                        Image(systemName: selectedFilter == .all
+                        Image(systemName: selectedFilter == .all && selectedServerID == nil
                               ? "line.3.horizontal.decrease.circle"
                               : "line.3.horizontal.decrease.circle.fill")
                     }
@@ -253,17 +264,26 @@ struct ContainersView: View {
 
     private var filteredEmptyState: some View {
         ContentUnavailableView {
-            Label("No Matching Containers", systemImage: selectedFilter == .all ? "magnifyingglass" : selectedFilter.systemImage)
+            Label(
+                "No Matching Containers",
+                systemImage: selectedFilter == .all && selectedServerID == nil ? "magnifyingglass" : "line.3.horizontal.decrease.circle"
+            )
         } description: {
             if searchText.isEmpty {
-                Text("No containers match the \(selectedFilter.title.lowercased()) filter.")
+                Text(noResultsDescription)
             } else {
-                Text("No containers match “\(searchText)” with the \(selectedFilter.title.lowercased()) filter.")
+                Text("No containers match “\(searchText)” with \(activeFilterDescription).")
             }
         } actions: {
             if selectedFilter != .all {
                 Button("Show All Containers") {
                     selectedFilter = .all
+                }
+            }
+
+            if selectedServerID != nil {
+                Button("Show All Servers") {
+                    selectedServerID = nil
                 }
             }
         }
@@ -337,6 +357,7 @@ struct ContainersView: View {
     private var filteredEntries: [ContainerEntry] {
         sortedEntries.filter { entry in
             guard entry.container.matches(selectedFilter) else { return false }
+            guard selectedServerID == nil || entry.serverID == selectedServerID else { return false }
             guard !searchText.isEmpty else { return true }
 
             let q = searchText.lowercased()
@@ -344,6 +365,38 @@ struct ContainersView: View {
                 entry.container.image.lowercased().contains(q) ||
                 entry.server.name.lowercased().contains(q)
         }
+    }
+
+    private var availableServers: [Server] {
+        let serverIDsWithContainers = Set(allEntries.map(\.serverID))
+        return servers.filter { serverIDsWithContainers.contains($0.id) }
+    }
+
+    private var selectedServerName: String? {
+        guard let selectedServerID else { return nil }
+        return availableServers.first(where: { $0.id == selectedServerID })?.name
+    }
+
+    private var activeFilterDescription: String {
+        var parts: [String] = []
+
+        if selectedFilter != .all {
+            parts.append("the \(selectedFilter.title.lowercased()) filter")
+        }
+
+        if let selectedServerName {
+            parts.append("server \(selectedServerName)")
+        }
+
+        return parts.isEmpty ? "the current filters" : parts.joined(separator: " and ")
+    }
+
+    private var noResultsDescription: String {
+        if selectedFilter == .all, let selectedServerName {
+            return "No containers are available for server \(selectedServerName)."
+        }
+
+        return "No containers match \(activeFilterDescription)."
     }
 
     // MARK: - Card Style
