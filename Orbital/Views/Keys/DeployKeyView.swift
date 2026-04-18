@@ -284,7 +284,7 @@ struct AuthorizeKeyOnServerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(dismissButtonTitle) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if case .deploying = deployState {
@@ -300,6 +300,15 @@ struct AuthorizeKeyOnServerSheet: View {
         }
         .presentationDetents([.medium])
         .task { await loadPublicKey() }
+    }
+
+    private var dismissButtonTitle: String {
+        switch deployState {
+        case .success:
+            return "Close"
+        default:
+            return "Cancel"
+        }
     }
 
     @ViewBuilder

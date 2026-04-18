@@ -5,6 +5,7 @@
 //  Created by Jonathan on 4/13/26.
 //
 
+import Crypto
 import SwiftData
 import SwiftUI
 
@@ -31,6 +32,8 @@ struct AddEditServerView: View {
     @State private var currentStep: ServerEditorStep = .identity
 
     @State private var isSaving = false
+    @State private var isGeneratingKey = false
+    @State private var generatedKeyRefForSession: String?
     @State private var saveError: String?
     @State private var showAuthorizeSheet = false
     @FocusState private var focusedField: ServerEditorField?
@@ -96,6 +99,21 @@ struct AddEditServerView: View {
                 username: username,
                 keyRef: selectedKeyRef
             )
+        }
+        .overlay {
+            if isGeneratingKey {
+                ZStack {
+                    Color.black.opacity(0.3).ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        ProgressView()
+                        Text("Generating key pair…")
+                            .font(.subheadline)
+                    }
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
         }
     }
 
@@ -444,16 +462,99 @@ struct AddEditServerView: View {
     @ViewBuilder
     private var keyAuthSection: some View {
         VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await generateManagedKey() }
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: generatedKeyRefForSession == nil ? "wand.and.stars" : "checkmark.seal.fill")
+                                .font(.subheadline.weight(.bold))
+                            Text(generatedKeyRefForSession == nil ? "Generate SSH Key" : "Key Created")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                        }
+
+                        Text(generatedKeyRefForSession == nil ? "Create one managed ED25519 key for this server." : "This screen can only create one new key.")
+                            .font(.caption)
+                            .foregroundStyle(generatedKeyRefForSession == nil ? Color.white.opacity(0.82) : Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(
+                        LinearGradient(
+                            colors: generatedKeyRefForSession == nil
+                                ? [selectedColor.opacity(0.92), selectedColor.opacity(0.72)]
+                                : [Color(uiColor: .secondarySystemBackground), Color(uiColor: .secondarySystemBackground)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(
+                                generatedKeyRefForSession == nil ? .white.opacity(0.14) : .white.opacity(0.08),
+                                lineWidth: 1
+                            )
+                    }
+                    .foregroundStyle(generatedKeyRefForSession == nil ? Color.white : .primary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isGeneratingKey || generatedKeyRefForSession != nil)
+
+                if !storedKeys.isEmpty {
+                    Button {
+                        selectedKeyRef = ""
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "xmark")
+                                    .font(.caption.weight(.bold))
+                                Text("Clear Selection")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                            }
+
+                            Text("Use no stored key and paste one manually instead.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedKeyRef.isEmpty)
+                    .opacity(selectedKeyRef.isEmpty ? 0.55 : 1)
+                }
+            }
+
             // Stored keys picker
             VStack(alignment: .leading, spacing: 10) {
-                Text("Stored Keys")
-                    .font(.subheadline.weight(.semibold))
+                HStack {
+                    Text("Stored Keys")
+                        .font(.subheadline.weight(.semibold))
+
+                    Spacer()
+
+                    if !selectedKeyRef.isEmpty,
+                       let selectedKey = storedKeys.first(where: { $0.keychainKey == selectedKeyRef }) {
+                        Text("Using \(selectedKey.name)")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(selectedColor)
+                    }
+                }
 
                 if storedKeys.isEmpty {
                     HStack(spacing: 10) {
                         Image(systemName: "key.slash")
                             .foregroundStyle(.secondary)
-                        Text("No keys found. Go to Settings → SSH Keys to add one.")
+                        Text("No keys found yet. Generate one here or go to Settings → SSH Keys.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -736,6 +837,29 @@ struct AddEditServerView: View {
             .filter { $0.hasPrefix("sshkey:") }
             .map { StoredKey(keychainKey: $0, name: String($0.dropFirst("sshkey:".count))) }
             .sorted { $0.name < $1.name }
+    }
+
+    private func generateManagedKey() async {
+        guard generatedKeyRefForSession == nil else { return }
+
+        isGeneratingKey = true
+        defer { isGeneratingKey = false }
+
+        do {
+            let privateKey = Curve25519.Signing.PrivateKey()
+            let name = "orbital-\(Int(Date().timeIntervalSince1970))"
+            let keychainKey = "sshkey:\(name)"
+
+            try await KeychainService.shared.save(key: keychainKey, data: privateKey.rawRepresentation)
+            await loadStoredKeys()
+
+            generatedKeyRefForSession = keychainKey
+            selectedKeyRef = keychainKey
+            pastedPEM = ""
+            authMethod = .privateKey
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 
     private func save() async {

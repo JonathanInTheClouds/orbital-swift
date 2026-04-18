@@ -41,7 +41,7 @@ struct ServerListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        showAddServer = true
+                        presentAddServer()
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -203,7 +203,7 @@ struct ServerListView: View {
 
                     VStack(spacing: 12) {
                         Button {
-                            showAddServer = true
+                            presentAddServer()
                         } label: {
                             Label("Add Your First Server", systemImage: "plus")
                                 .frame(maxWidth: .infinity)
@@ -359,6 +359,11 @@ struct ServerListView: View {
             cardStyleStorage = CardStylePreferenceStore.write(styles)
             modelContext.delete(server)
         }
+    }
+
+    private func presentAddServer() {
+        LocalNetworkAuthorizationRequester.shared.requestIfNeeded()
+        showAddServer = true
     }
 }
 
