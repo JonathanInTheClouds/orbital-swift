@@ -154,6 +154,7 @@ struct ContainerStatusSnapshot: Codable, Hashable {
 final class MetricSnapshot {
     var id: UUID
     var server: Server?
+    var serverID: UUID?
     var recordedAt: Date
     var cpuPercent: Double
     var memUsedBytes: Int64
@@ -173,6 +174,7 @@ final class MetricSnapshot {
     init(
         id: UUID = UUID(),
         server: Server? = nil,
+        serverID: UUID? = nil,
         recordedAt: Date = Date(),
         cpuPercent: Double = 0,
         memUsedBytes: Int64 = 0,
@@ -191,6 +193,7 @@ final class MetricSnapshot {
     ) {
         self.id = id
         self.server = server
+        self.serverID = serverID ?? server?.id
         self.recordedAt = recordedAt
         self.cpuPercent = cpuPercent
         self.memUsedBytes = memUsedBytes

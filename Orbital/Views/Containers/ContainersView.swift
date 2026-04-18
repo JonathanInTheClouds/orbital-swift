@@ -309,7 +309,7 @@ struct ContainersView: View {
     private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
         var result: [UUID: MetricSnapshot] = [:]
         for snapshot in snapshots {
-            guard let serverID = snapshot.server?.id, result[serverID] == nil else { continue }
+            guard let serverID = snapshot.serverID, result[serverID] == nil else { continue }
             result[serverID] = snapshot
         }
         return result

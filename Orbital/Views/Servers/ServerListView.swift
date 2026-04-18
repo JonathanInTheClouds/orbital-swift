@@ -21,7 +21,7 @@ struct ServerListView: View {
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
     @State private var showAddServer = false
-    @State private var serverToEdit: Server?
+    @State private var serverToEditID: UUID?
     @State private var searchText = ""
     @State private var connectError: IdentifiableError?
     @State private var navigationPath: [UUID] = []
@@ -52,8 +52,13 @@ struct ServerListView: View {
             .sheet(isPresented: $showAddServer) {
                 AddEditServerView()
             }
-            .sheet(item: $serverToEdit) { server in
-                AddEditServerView(server: server)
+            .sheet(isPresented: Binding(
+                get: { serverToEditID != nil },
+                set: { if !$0 { serverToEditID = nil } }
+            )) {
+                if let serverToEditID {
+                    AddEditServerView(serverID: serverToEditID)
+                }
             }
             .task {
                 metricsPollingService.ensureAutomaticPolling(for: servers)
@@ -130,7 +135,7 @@ struct ServerListView: View {
                     }
 
                     Button {
-                        serverToEdit = server
+                        serverToEditID = server.id
                     } label: {
                         Label("Edit", systemImage: "pencil")
                     }
@@ -157,7 +162,7 @@ struct ServerListView: View {
                     }
 
                     Button {
-                        serverToEdit = server
+                        serverToEditID = server.id
                     } label: {
                         Label("Edit", systemImage: "pencil")
                     }
@@ -283,7 +288,7 @@ struct ServerListView: View {
         var results: [UUID: MetricSnapshot] = [:]
 
         for snapshot in snapshots {
-            guard let serverID = snapshot.server?.id, results[serverID] == nil else { continue }
+            guard let serverID = snapshot.serverID, results[serverID] == nil else { continue }
             results[serverID] = snapshot
         }
 
@@ -353,11 +358,36 @@ struct ServerListView: View {
     }
 
     private func delete(_ server: Server) {
+        let serverID = server.id
+
         withAnimation {
             var styles = cardStylesByServerID
-            styles.removeValue(forKey: server.id.uuidString)
+            styles.removeValue(forKey: serverID.uuidString)
             cardStyleStorage = CardStylePreferenceStore.write(styles)
+
+            serverToEditID = (serverToEditID == serverID) ? nil : serverToEditID
+            navigationPath.removeAll { $0 == serverID }
+            if requestedServerID == serverID {
+                requestedServerID = nil
+            }
+
+            metricsPollingService.stopPolling(serverID: serverID)
+            sshService.disconnect(serverID: serverID)
+
+            let snapshotDescriptor = FetchDescriptor<MetricSnapshot>(
+                predicate: #Predicate<MetricSnapshot> { snapshot in
+                    snapshot.serverID == serverID
+                }
+            )
+
+            if let relatedSnapshots = try? modelContext.fetch(snapshotDescriptor) {
+                for snapshot in relatedSnapshots {
+                    modelContext.delete(snapshot)
+                }
+            }
+
             modelContext.delete(server)
+            try? modelContext.save()
         }
     }
 

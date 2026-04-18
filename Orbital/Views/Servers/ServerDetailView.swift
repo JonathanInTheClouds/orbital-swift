@@ -55,7 +55,7 @@ struct ServerDetailView: View {
             }
         }
         .sheet(isPresented: $showEditServer) {
-            AddEditServerView(server: server)
+            AddEditServerView(serverID: server.id)
         }
         .sheet(isPresented: $showSectionOrganizer) {
             NavigationStack {

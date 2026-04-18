@@ -25,7 +25,7 @@ struct ServerContainerListView: View {
         let serverID = server.id
         _snapshots = Query(
             filter: #Predicate<MetricSnapshot> { snapshot in
-                snapshot.server?.id == serverID
+                snapshot.serverID == serverID
             },
             sort: [SortDescriptor(\MetricSnapshot.recordedAt, order: .reverse)]
         )

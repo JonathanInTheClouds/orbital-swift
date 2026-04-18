@@ -59,23 +59,29 @@ final class MetricsPollingService {
         server: Server,
         every interval: TimeInterval
     ) {
-        stopPolling(serverID: server.id, isManual: false)
+        let serverID = server.id
+        stopPolling(serverID: serverID, isManual: false)
 
         let sanitizedInterval = max(interval, 5)
-        pollingIntervals[server.id] = sanitizedInterval
-        lastErrors[server.id] = nil
-        manuallyStoppedServerIDs.remove(server.id)
+        pollingIntervals[serverID] = sanitizedInterval
+        lastErrors[serverID] = nil
+        manuallyStoppedServerIDs.remove(serverID)
 
-        pollTasks[server.id] = Task { [weak self, server] in
+        pollTasks[serverID] = Task { [weak self] in
             guard let self else { return }
 
             while !Task.isCancelled {
+                guard let server = self.server(for: serverID) else {
+                    self.stopPolling(serverID: serverID, isManual: false)
+                    return
+                }
+
                 do {
                     try await self.collectMetrics(for: server)
-                    self.lastErrors[server.id] = nil
+                    self.lastErrors[serverID] = nil
                 } catch {
                     let message = error.localizedDescription
-                    self.lastErrors[server.id] = message
+                    self.lastErrors[serverID] = message
                     metricsLog.error("[\(server.name)] Metrics poll failed: \(message, privacy: .public)")
                 }
 
@@ -152,7 +158,7 @@ final class MetricsPollingService {
     }
 
     func pollNow(server: Server) async throws {
-        try await collectMetrics(for: server)
+        try await collectMetrics(forServerID: server.id)
         lastErrors[server.id] = nil
     }
 
@@ -211,6 +217,23 @@ final class MetricsPollingService {
             server: server,
             pollingInterval: pollingIntervals[server.id] ?? Self.defaultPollingInterval
         )
+    }
+
+    private func collectMetrics(forServerID serverID: UUID) async throws {
+        guard let server = server(for: serverID) else {
+            throw MetricsPollingError.persistenceFailed("The selected server no longer exists.")
+        }
+
+        try await collectMetrics(for: server)
+    }
+
+    private func server(for serverID: UUID) -> Server? {
+        let descriptor = FetchDescriptor<Server>(
+            predicate: #Predicate<Server> { server in
+                server.id == serverID
+            }
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 }
 

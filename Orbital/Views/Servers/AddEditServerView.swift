@@ -13,7 +13,8 @@ struct AddEditServerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    var server: Server?
+    private let serverID: UUID?
+    @Query private var matchingServers: [Server]
 
     @State private var name = ""
     @State private var host = ""
@@ -37,6 +38,28 @@ struct AddEditServerView: View {
     @State private var saveError: String?
     @State private var showAuthorizeSheet = false
     @FocusState private var focusedField: ServerEditorField?
+
+    init(serverID: UUID? = nil) {
+        self.serverID = serverID
+
+        if let serverID {
+            _matchingServers = Query(
+                filter: #Predicate<Server> { server in
+                    server.id == serverID
+                }
+            )
+        } else {
+            _matchingServers = Query(
+                filter: #Predicate<Server> { _ in
+                    false
+                }
+            )
+        }
+    }
+
+    private var server: Server? {
+        matchingServers.first
+    }
 
     private var isEditing: Bool { server != nil }
     private var port: Int { Int(portText) ?? 22 }

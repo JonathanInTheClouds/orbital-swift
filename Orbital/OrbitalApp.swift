@@ -21,6 +21,7 @@ struct OrbitalApp: App {
 
         do {
             let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
+            try? Self.cleanupMetricSnapshots(in: container.mainContext)
             self.sharedModelContainer = container
             self.liveActivityCoordinator = liveActivityCoordinator
             self.metricsPollingService = Self.makeMetricsPollingService(
@@ -35,6 +36,7 @@ struct OrbitalApp: App {
             do {
                 try Self.archiveIncompatibleStore(at: storeURL)
                 let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
+                try? Self.cleanupMetricSnapshots(in: container.mainContext)
                 self.sharedModelContainer = container
                 self.liveActivityCoordinator = liveActivityCoordinator
                 self.metricsPollingService = Self.makeMetricsPollingService(
@@ -129,6 +131,25 @@ extension OrbitalApp {
                 try fileManager.removeItem(at: archivedURL)
             }
             try fileManager.moveItem(at: sourceURL, to: archivedURL)
+        }
+    }
+
+    static func cleanupMetricSnapshots(in modelContext: ModelContext) throws {
+        let serverIDs = Set(try modelContext.fetch(FetchDescriptor<Server>()).map(\.id))
+        let snapshots = try modelContext.fetch(FetchDescriptor<MetricSnapshot>())
+
+        var deletedAny = false
+
+        for snapshot in snapshots {
+            guard let serverID = snapshot.serverID, serverIDs.contains(serverID) else {
+                modelContext.delete(snapshot)
+                deletedAny = true
+                continue
+            }
+        }
+
+        if deletedAny {
+            try modelContext.save()
         }
     }
 }
