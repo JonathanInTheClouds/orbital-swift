@@ -274,16 +274,18 @@ private struct LockScreenView: View {
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
 
-                    Text(context.state.status.title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(statusColor)
+                    HStack(spacing: 8) {
+                        Text(context.state.status.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(statusColor)
+
+                        Text(context.state.lastUpdatedAt, style: .relative)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
-
-                Text(context.state.lastUpdatedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 10) {
@@ -302,7 +304,9 @@ private struct LockScreenView: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
         .activityBackgroundTint(Color.black.opacity(0.18))
         .activitySystemActionForegroundColor(.white)
     }
