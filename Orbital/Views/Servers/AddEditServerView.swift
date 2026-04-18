@@ -33,6 +33,7 @@ struct AddEditServerView: View {
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var showAuthorizeSheet = false
+    @FocusState private var focusedField: ServerEditorField?
 
     private var isEditing: Bool { server != nil }
     private var port: Int { Int(portText) ?? 22 }
@@ -43,15 +44,28 @@ struct AddEditServerView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    heroCard
-                    stepRail
-                    activeStepCard
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 18) {
+                        heroCard
+                        stepRail
+                        activeStepCard
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .padding(.bottom, 28)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 18)
-                .padding(.bottom, 28)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, newValue in
+                    guard let newValue else { return }
+
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(120))
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(scrollTarget(for: newValue), anchor: UnitPoint(x: 0.5, y: 0.45))
+                        }
+                    }
+                }
             }
             .background(editorBackground)
             .navigationTitle(isEditing ? "Edit Server" : "Add Server")
@@ -185,12 +199,25 @@ struct AddEditServerView: View {
         case .identity:
             editorCard(title: currentStep.title, subtitle: currentStep.subtitle) {
                 VStack(spacing: 18) {
-                    InputField(
-                        title: "Display Name",
-                        prompt: "Production API",
-                        text: $name,
-                        isRequired: true
-                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 4) {
+                            Text("Display Name")
+                                .font(.subheadline.weight(.semibold))
+                            Text("*")
+                                .foregroundStyle(.red)
+                        }
+
+                        TextField("Production API", text: $name)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(
+                                Color(uiColor: .secondarySystemBackground),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            )
+                            .focused($focusedField, equals: .displayName)
+                            .id(ServerEditorScrollTarget.identityTop)
+                    }
 
                     ColorPickerGrid(selected: $colorTag)
                 }
@@ -203,7 +230,10 @@ struct AddEditServerView: View {
                         title: "Hostname or IP",
                         prompt: "192.168.1.100",
                         text: $host,
-                        isRequired: true
+                        isRequired: true,
+                        focusedField: $focusedField,
+                        field: .host,
+                        scrollTarget: .host
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -214,7 +244,10 @@ struct AddEditServerView: View {
                             title: "Port",
                             prompt: "22",
                             text: $portText,
-                            isRequired: true
+                            isRequired: true,
+                            focusedField: $focusedField,
+                            field: .port,
+                            scrollTarget: .port
                         )
                         .keyboardType(.numberPad)
 
@@ -222,7 +255,10 @@ struct AddEditServerView: View {
                             title: "Username",
                             prompt: "root",
                             text: $username,
-                            isRequired: true
+                            isRequired: true,
+                            focusedField: $focusedField,
+                            field: .username,
+                            scrollTarget: .username
                         )
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -232,7 +268,10 @@ struct AddEditServerView: View {
                         title: "Jump Host",
                         prompt: "Optional bastion host",
                         text: $jumpHostRef,
-                        isRequired: false
+                        isRequired: false,
+                        focusedField: $focusedField,
+                        field: .jumpHost,
+                        scrollTarget: .jumpHost
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -248,7 +287,10 @@ struct AddEditServerView: View {
                         SecureInputField(
                             title: "Password",
                             prompt: "Optional if already in Keychain",
-                            text: $passwordCredential
+                            text: $passwordCredential,
+                            focusedField: $focusedField,
+                            field: .password,
+                            scrollTarget: .password
                         )
                     } else {
                         keyAuthSection
@@ -269,6 +311,8 @@ struct AddEditServerView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 12)
                                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .focused($focusedField, equals: .tag)
+                                .id(ServerEditorScrollTarget.tag)
                                 .onSubmit { addTag() }
 
                             Button("Add") { addTag() }
@@ -310,9 +354,32 @@ struct AddEditServerView: View {
                             .lineLimit(5...8)
                             .padding(14)
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .focused($focusedField, equals: .notes)
+                            .id(ServerEditorScrollTarget.notes)
                     }
                 }
             }
+        }
+    }
+
+    private func scrollTarget(for field: ServerEditorField) -> ServerEditorScrollTarget {
+        switch field {
+        case .displayName:
+            return .identityTop
+        case .host:
+            return .host
+        case .port:
+            return .port
+        case .username:
+            return .username
+        case .jumpHost:
+            return .jumpHost
+        case .password:
+            return .password
+        case .tag:
+            return .tag
+        case .notes:
+            return .notes
         }
     }
 
@@ -749,6 +816,28 @@ struct AddEditServerView: View {
     }
 }
 
+private enum ServerEditorField: Hashable {
+    case displayName
+    case host
+    case port
+    case username
+    case jumpHost
+    case password
+    case tag
+    case notes
+}
+
+private enum ServerEditorScrollTarget: String {
+    case identityTop
+    case host
+    case port
+    case username
+    case jumpHost
+    case password
+    case tag
+    case notes
+}
+
 private enum ServerEditorStep: String, CaseIterable, Identifiable {
     case identity
     case connection
@@ -835,6 +924,9 @@ private struct InputField: View {
     let prompt: String
     @Binding var text: String
     let isRequired: Bool
+    var focusedField: FocusState<ServerEditorField?>.Binding? = nil
+    var field: ServerEditorField? = nil
+    var scrollTarget: ServerEditorScrollTarget? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -852,6 +944,8 @@ private struct InputField: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .applyFocus(focusedField, equals: field)
+                .applyScrollID(scrollTarget)
         }
     }
 }
@@ -860,6 +954,9 @@ private struct SecureInputField: View {
     let title: String
     let prompt: String
     @Binding var text: String
+    var focusedField: FocusState<ServerEditorField?>.Binding? = nil
+    var field: ServerEditorField? = nil
+    var scrollTarget: ServerEditorScrollTarget? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -871,6 +968,31 @@ private struct SecureInputField: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .applyFocus(focusedField, equals: field)
+                .applyScrollID(scrollTarget)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func applyFocus(
+        _ focusedField: FocusState<ServerEditorField?>.Binding?,
+        equals field: ServerEditorField?
+    ) -> some View {
+        if let focusedField, let field {
+            self.focused(focusedField, equals: field)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func applyScrollID(_ target: ServerEditorScrollTarget?) -> some View {
+        if let target {
+            self.id(target)
+        } else {
+            self
         }
     }
 }
