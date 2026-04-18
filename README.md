@@ -18,6 +18,7 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone. It comb
 - **Credential Vault** — Passwords and SSH private keys stored in the iOS Keychain, with biometric unlock support for the vault
 - **Known Hosts** — Host key fingerprint tracking, mismatch detection, and manual clearing from Settings
 - **Connection Reuse** — Shared SSH transports for terminal sessions, commands, and metrics polling
+- **Live Activities** — Server health metrics surfaced on the Lock Screen and Dynamic Island via ActivityKit
 - **Script Models** — `Script` and `ScriptRun` persistence models are present for future automation work, but there is no script UI yet
 
 ---
@@ -75,10 +76,11 @@ Orbital follows a layered architecture built around SwiftUI, SwiftData, and a sm
 
 ```
 Models       — SwiftData entities (Server, MetricSnapshot, Script, ScriptRun)
-Services     — SSH session management, libssh transport, command pooling, metrics polling, Keychain, biometrics
+Services     — SSH session management, libssh transport, command pooling, metrics polling, Keychain, biometrics, Live Activity coordination
 Views        — SwiftUI screens organized by feature (Servers, Terminals, Containers, Settings, Keys)
-Utilities    — Shared helpers for key encoding and UI preference storage
+Utilities    — Shared helpers for key encoding, container shell execution, and UI preference storage
 Resources    — xterm.js web terminal assets (HTML, JS, CSS)
+Extensions   — OrbitalLiveActivityExtension (Lock Screen / Dynamic Island widgets)
 ```
 
 ---
@@ -114,7 +116,9 @@ Orbital/
 │   ├── SSHCommandPool.swift
 │   ├── MetricsPollingService.swift
 │   ├── KeychainService.swift
-│   └── BiometricService.swift
+│   ├── BiometricService.swift
+│   ├── LocalNetworkAuthorizationRequester.swift
+│   └── LiveActivities/   # ActivityKit coordinator and support for server health Live Activities
 ├── Views/
 │   ├── RootTabView.swift
 │   ├── Servers/      # server list, editor, details, metrics, per-server containers
@@ -124,12 +128,15 @@ Orbital/
 │   └── Keys/         # deploy-key authorization flow
 ├── Utilities/
 │   ├── CardStylePreferenceStore.swift
+│   ├── ContainerRuntimeShell.swift
 │   └── SSHPublicKeyEncoder.swift
 └── Resources/
     ├── terminal.html
     ├── xterm.mjs
     ├── addon-fit.mjs
     └── xterm.css
+OrbitalLiveActivityExtension/   # Widget extension for Lock Screen / Dynamic Island
+SharedLiveActivity/              # Shared ActivityKit attributes between app and extension
 ```
 
 ---
