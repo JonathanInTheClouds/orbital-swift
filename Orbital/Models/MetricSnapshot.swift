@@ -42,6 +42,51 @@ enum ContainerRuntimeKind: String, Codable {
     }
 }
 
+enum ContainerListFilter: String, CaseIterable, Codable, Identifiable {
+    case all
+    case unhealthy
+    case restarting
+    case running
+    case paused
+    case exited
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            return "All"
+        case .unhealthy:
+            return "Unhealthy"
+        case .restarting:
+            return "Restarting"
+        case .running:
+            return "Running"
+        case .paused:
+            return "Paused"
+        case .exited:
+            return "Stopped"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all:
+            return "line.3.horizontal.decrease.circle"
+        case .unhealthy:
+            return "exclamationmark.triangle.fill"
+        case .restarting:
+            return "arrow.triangle.2.circlepath"
+        case .running:
+            return "play.circle.fill"
+        case .paused:
+            return "pause.circle.fill"
+        case .exited:
+            return "stop.circle.fill"
+        }
+    }
+}
+
 struct ContainerStatusSnapshot: Codable, Hashable {
     var name: String
     var image: String
@@ -84,6 +129,23 @@ struct ContainerStatusSnapshot: Codable, Hashable {
             return "Healthy"
         }
         return nil
+    }
+
+    func matches(_ filter: ContainerListFilter) -> Bool {
+        switch filter {
+        case .all:
+            return true
+        case .unhealthy:
+            return isUnhealthy
+        case .restarting:
+            return isRestarting
+        case .running:
+            return isRunning
+        case .paused:
+            return isPaused
+        case .exited:
+            return isExited
+        }
     }
 }
 
