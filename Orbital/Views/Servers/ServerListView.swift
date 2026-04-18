@@ -9,6 +9,8 @@ import SwiftUI
 import SwiftData
 
 struct ServerListView: View {
+    @Binding var requestedServerID: UUID?
+
     @Environment(\.modelContext) private var modelContext
     @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
@@ -22,9 +24,10 @@ struct ServerListView: View {
     @State private var serverToEdit: Server?
     @State private var searchText = ""
     @State private var connectError: IdentifiableError?
+    @State private var navigationPath: [UUID] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if servers.isEmpty {
                     emptyState
@@ -54,9 +57,14 @@ struct ServerListView: View {
             }
             .task {
                 metricsPollingService.ensureAutomaticPolling(for: servers)
+                consumeRequestedServerIDIfNeeded()
             }
             .onChange(of: serverIDs) { _, _ in
                 metricsPollingService.ensureAutomaticPolling(for: servers)
+                consumeRequestedServerIDIfNeeded()
+            }
+            .onChange(of: requestedServerID) { _, _ in
+                consumeRequestedServerIDIfNeeded()
             }
             .alert("Connection Error", isPresented: Binding(
                 get: { connectError != nil },
@@ -66,6 +74,13 @@ struct ServerListView: View {
             } message: {
                 Text(connectError?.message ?? "")
             }
+            .navigationDestination(for: UUID.self) { serverID in
+                if let server = servers.first(where: { $0.id == serverID }) {
+                    ServerDetailView(server: server)
+                } else {
+                    ContentUnavailableView("Server Not Found", systemImage: "exclamationmark.triangle")
+                }
+            }
         }
     }
 
@@ -74,9 +89,7 @@ struct ServerListView: View {
     private var serverList: some View {
         List {
             ForEach(filteredServers) { server in
-                NavigationLink {
-                    ServerDetailView(server: server)
-                } label: {
+                NavigationLink(value: server.id) {
                     ServerCardView(
                         server: server,
                         status: displayStatus(for: server),
@@ -252,6 +265,16 @@ struct ServerListView: View {
         servers.map(\.id)
     }
 
+    private func consumeRequestedServerIDIfNeeded() {
+        guard let requestedServerID,
+              servers.contains(where: { $0.id == requestedServerID }) else {
+            return
+        }
+
+        navigationPath = [requestedServerID]
+        self.requestedServerID = nil
+    }
+
     private var cardStylesByServerID: [String: String] {
         CardStylePreferenceStore.read(from: cardStyleStorage)
     }
@@ -362,8 +385,14 @@ struct IdentifiableError: Identifiable {
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
 
-    return ServerListView()
+    return ServerListView(requestedServerID: .constant(nil))
         .modelContainer(container)
         .environment(SSHService.shared)
-        .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
+        .environment(
+            MetricsPollingService(
+                modelContext: container.mainContext,
+                sshService: .shared,
+                liveActivityCoordinator: ServerHealthLiveActivityCoordinator()
+            )
+        )
 }

@@ -18,19 +18,25 @@ final class MetricsPollingService {
 
     private let sshService: SSHService
     private let modelContext: ModelContext
+    private let liveActivityCoordinator: ServerHealthLiveActivityCoordinator
 
+    private var preferredDynamicIslandServerID: UUID?
     private var pollTasks: [UUID: Task<Void, Never>] = [:]
     private var pollingIntervals: [UUID: TimeInterval] = [:]
     private var lastRecordedAt: [UUID: Date] = [:]
     private var lastErrors: [UUID: String] = [:]
+    private var latestSnapshots: [UUID: MetricSnapshot] = [:]
     private var manuallyStoppedServerIDs: Set<UUID> = []
 
     init(
         modelContext: ModelContext,
-        sshService: SSHService
+        sshService: SSHService,
+        liveActivityCoordinator: ServerHealthLiveActivityCoordinator
     ) {
         self.modelContext = modelContext
         self.sshService = sshService
+        self.liveActivityCoordinator = liveActivityCoordinator
+        self.preferredDynamicIslandServerID = liveActivityCoordinator.preferredServerID
     }
 
     func isPolling(serverID: UUID) -> Bool {
@@ -86,6 +92,28 @@ final class MetricsPollingService {
         stopPolling(serverID: serverID, isManual: true)
     }
 
+    func isDynamicIslandEnabled(for serverID: UUID) -> Bool {
+        preferredDynamicIslandServerID == serverID
+    }
+
+    func setDynamicIslandEnabled(_ enabled: Bool, for server: Server) {
+        if enabled {
+            preferredDynamicIslandServerID = server.id
+            liveActivityCoordinator.enable(for: server)
+
+            if let latestSnapshot = latestSnapshots[server.id] {
+                liveActivityCoordinator.handleSnapshot(
+                    latestSnapshot,
+                    server: server,
+                    pollingInterval: pollingIntervals[server.id] ?? Self.defaultPollingInterval
+                )
+            }
+        } else {
+            preferredDynamicIslandServerID = nil
+            liveActivityCoordinator.disable(for: server.id)
+        }
+    }
+
     func ensureAutomaticPolling(for servers: [Server]) {
         let activeServerIDs = Set(servers.map(\.id))
 
@@ -101,6 +129,16 @@ final class MetricsPollingService {
     private func stopPolling(serverID: UUID, isManual: Bool) {
         pollTasks[serverID]?.cancel()
         pollTasks.removeValue(forKey: serverID)
+
+        liveActivityCoordinator.handlePollingStopped(
+            serverID: serverID,
+            isManual: isManual,
+            pollingInterval: pollingIntervals[serverID]
+        )
+
+        if isManual, preferredDynamicIslandServerID == serverID {
+            preferredDynamicIslandServerID = nil
+        }
 
         if isManual {
             manuallyStoppedServerIDs.insert(serverID)
@@ -160,12 +198,19 @@ final class MetricsPollingService {
         modelContext.insert(snapshot)
         server.lastSeenAt = snapshot.recordedAt
         lastRecordedAt[server.id] = snapshot.recordedAt
+        latestSnapshots[server.id] = snapshot
 
         do {
             try modelContext.save()
         } catch {
             throw MetricsPollingError.persistenceFailed(error.localizedDescription)
         }
+
+        liveActivityCoordinator.handleSnapshot(
+            snapshot,
+            server: server,
+            pollingInterval: pollingIntervals[server.id] ?? Self.defaultPollingInterval
+        )
     }
 }
 
