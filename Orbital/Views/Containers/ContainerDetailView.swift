@@ -7,16 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Shell Quoting (module-scope, shared with ContainersView)
-
-func shellQuoted(_ value: String) -> String {
-    "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
-}
-
-func shellCommandWithContainerRuntimePath(_ command: String) -> String {
-    "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH\"; \(command)"
-}
-
 // MARK: - Container Action
 
 enum ContainerAction: Equatable {
