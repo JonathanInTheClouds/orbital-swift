@@ -100,6 +100,71 @@ final class OrbitalTests: XCTestCase {
         }
     }
 
+    func testServerHealthLiveActivitySupportBuildsHealthyState() {
+        let snapshot = makeSnapshot(
+            cpuPercent: 22,
+            memUsedBytes: 2_000,
+            memTotalBytes: 8_000,
+            diskUsages: [DiskUsage(mountPoint: "/", usedBytes: 200, totalBytes: 1_000)],
+            containerStatuses: []
+        )
+
+        let state = ServerHealthLiveActivitySupport.makeState(from: snapshot)
+
+        XCTAssertEqual(state.status, .healthy)
+        XCTAssertEqual(state.cpuPercent, 22, accuracy: 0.001)
+        XCTAssertEqual(state.memoryPercent, 25, accuracy: 0.001)
+        XCTAssertEqual(state.diskPercent, 20, accuracy: 0.001)
+    }
+
+    func testServerHealthLiveActivitySupportBuildsCriticalStateForUnhealthyContainers() {
+        let snapshot = makeSnapshot(
+            cpuPercent: 35,
+            memUsedBytes: 3_000,
+            memTotalBytes: 8_000,
+            diskUsages: [DiskUsage(mountPoint: "/", usedBytes: 250, totalBytes: 1_000)],
+            containerRuntime: .docker,
+            containerRuntimeReachable: true,
+            containerStatuses: [
+                ContainerStatusSnapshot(
+                    name: "api",
+                    image: "nginx",
+                    state: "running",
+                    status: "Up 5 minutes (unhealthy)"
+                )
+            ]
+        )
+
+        let state = ServerHealthLiveActivitySupport.makeState(from: snapshot)
+
+        XCTAssertEqual(state.status, .critical)
+        XCTAssertEqual(state.unhealthyContainers, 1)
+        XCTAssertEqual(state.containerRuntimeName, "Docker")
+    }
+
+    func testServerHealthLiveActivitySupportBuildsStaleStateFromExistingState() {
+        let baseState = ServerHealthActivityAttributes.ContentState(
+            status: .warning,
+            cpuPercent: 76,
+            memoryPercent: 63,
+            diskPercent: 55,
+            runningContainers: 4,
+            unhealthyContainers: 0,
+            containerRuntimeName: "Docker",
+            containerRuntimeReachable: true,
+            lastUpdatedAt: Date(timeIntervalSince1970: 10)
+        )
+
+        let staleState = ServerHealthLiveActivitySupport.makeStaleState(
+            from: baseState,
+            at: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(staleState.status, .stale)
+        XCTAssertEqual(staleState.cpuPercent, 76, accuracy: 0.001)
+        XCTAssertEqual(staleState.lastUpdatedAt, Date(timeIntervalSince1970: 100))
+    }
+
     func testArchiveIncompatibleStoreMovesDatabaseFilesToBackupDirectory() throws {
         let tempDirectory = makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: tempDirectory) }
@@ -157,5 +222,26 @@ final class OrbitalTests: XCTestCase {
 
     private func matchingArchivedFile(suffix: String, in backups: [URL]) throws -> URL {
         try XCTUnwrap(backups.first(where: { $0.lastPathComponent.hasSuffix(suffix) }))
+    }
+
+    private func makeSnapshot(
+        cpuPercent: Double,
+        memUsedBytes: Int64,
+        memTotalBytes: Int64,
+        diskUsages: [DiskUsage],
+        containerRuntime: ContainerRuntimeKind = .none,
+        containerRuntimeReachable: Bool = false,
+        containerStatuses: [ContainerStatusSnapshot]
+    ) -> MetricSnapshot {
+        MetricSnapshot(
+            recordedAt: Date(timeIntervalSince1970: 50),
+            cpuPercent: cpuPercent,
+            memUsedBytes: memUsedBytes,
+            memTotalBytes: memTotalBytes,
+            diskUsages: diskUsages,
+            containerRuntime: containerRuntime,
+            containerRuntimeReachable: containerRuntimeReachable,
+            containerStatuses: containerStatuses
+        )
     }
 }

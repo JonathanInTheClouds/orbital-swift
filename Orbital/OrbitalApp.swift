@@ -12,15 +12,21 @@ import SwiftData
 struct OrbitalApp: App {
     let sharedModelContainer: ModelContainer
     let metricsPollingService: MetricsPollingService
+    let liveActivityCoordinator: ServerHealthLiveActivityCoordinator
 
     init() {
         let schema = Self.appSchema
         let storeURL = Self.isUITesting ? nil : Self.storeURL()
+        let liveActivityCoordinator = ServerHealthLiveActivityCoordinator()
 
         do {
             let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
             self.sharedModelContainer = container
-            self.metricsPollingService = Self.makeMetricsPollingService(container: container)
+            self.liveActivityCoordinator = liveActivityCoordinator
+            self.metricsPollingService = Self.makeMetricsPollingService(
+                container: container,
+                liveActivityCoordinator: liveActivityCoordinator
+            )
         } catch {
             guard let storeURL else {
                 fatalError("Could not create ModelContainer: \(error)")
@@ -30,7 +36,11 @@ struct OrbitalApp: App {
                 try Self.archiveIncompatibleStore(at: storeURL)
                 let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
                 self.sharedModelContainer = container
-                self.metricsPollingService = Self.makeMetricsPollingService(container: container)
+                self.liveActivityCoordinator = liveActivityCoordinator
+                self.metricsPollingService = Self.makeMetricsPollingService(
+                    container: container,
+                    liveActivityCoordinator: liveActivityCoordinator
+                )
             } catch {
                 fatalError("Could not create ModelContainer: \(error)")
             }
@@ -60,10 +70,14 @@ extension OrbitalApp {
         ])
     }
 
-    static func makeMetricsPollingService(container: ModelContainer) -> MetricsPollingService {
+    static func makeMetricsPollingService(
+        container: ModelContainer,
+        liveActivityCoordinator: ServerHealthLiveActivityCoordinator
+    ) -> MetricsPollingService {
         MetricsPollingService(
             modelContext: container.mainContext,
-            sshService: .shared
+            sshService: .shared,
+            liveActivityCoordinator: liveActivityCoordinator
         )
     }
 

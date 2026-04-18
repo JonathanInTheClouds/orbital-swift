@@ -8,6 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		240C314A2F8DD2850060B73F /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 240C31492F8DD2850060B73F /* NIOSSH */; };
+		4A7E90012F9F000100A10001 /* OrbitalLiveActivityExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4A7E90002F9F000100A10001 /* OrbitalLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4A7E900A2F9F000100A10001 /* ServerHealthActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E90042F9F000100A10001 /* ServerHealthActivityAttributes.swift */; };
+		4A7E900B2F9F000100A10001 /* ServerHealthActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E90042F9F000100A10001 /* ServerHealthActivityAttributes.swift */; };
+		4A7E900C2F9F000100A10001 /* OrbitalLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E90062F9F000100A10001 /* OrbitalLiveActivityBundle.swift */; };
+		4A7E900D2F9F000100A10001 /* ServerHealthLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7E90072F9F000100A10001 /* ServerHealthLiveActivityWidget.swift */; };
 		31A0E3014CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -26,12 +31,24 @@
 			remoteGlobalIDString = 240C30EA2F8DC61B0060B73F;
 			remoteInfo = Orbital;
 		};
+		4A7E901A2F9F000100A10001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 240C30E32F8DC61B0060B73F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4A7E900E2F9F000100A10001;
+			remoteInfo = OrbitalLiveActivityExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		240C30EB2F8DC61B0060B73F /* Orbital.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orbital.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		240C30FA2F8DC61E0060B73F /* OrbitalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbitalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		240C31042F8DC61E0060B73F /* OrbitalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbitalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A7E90002F9F000100A10001 /* OrbitalLiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OrbitalLiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A7E90042F9F000100A10001 /* ServerHealthActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerHealthActivityAttributes.swift; sourceTree = "<group>"; };
+		4A7E90062F9F000100A10001 /* OrbitalLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbitalLiveActivityBundle.swift; sourceTree = "<group>"; };
+		4A7E90072F9F000100A10001 /* ServerHealthLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerHealthLiveActivityWidget.swift; sourceTree = "<group>"; };
+		4A7E901C2F9F000100A10001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/Build/LibsshVendor.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -77,7 +94,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4A7E90132F9F000100A10001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4A7E90122F9F000100A10001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4A7E90012F9F000100A10001 /* OrbitalLiveActivityExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		240C30E22F8DC61B0060B73F = {
@@ -85,6 +123,8 @@
 			children = (
 				31A0E3004CC6A7B300C3A111 /* Vendor/Build/LibsshVendor.xcframework */,
 				240C30ED2F8DC61B0060B73F /* Orbital */,
+				4A7E90022F9F000100A10001 /* SharedLiveActivity */,
+				4A7E90052F9F000100A10001 /* OrbitalLiveActivityExtension */,
 				240C30FD2F8DC61E0060B73F /* OrbitalTests */,
 				240C31072F8DC61E0060B73F /* OrbitalUITests */,
 				240C30EC2F8DC61B0060B73F /* Products */,
@@ -97,8 +137,27 @@
 				240C30EB2F8DC61B0060B73F /* Orbital.app */,
 				240C30FA2F8DC61E0060B73F /* OrbitalTests.xctest */,
 				240C31042F8DC61E0060B73F /* OrbitalUITests.xctest */,
+				4A7E90002F9F000100A10001 /* OrbitalLiveActivityExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4A7E90022F9F000100A10001 /* SharedLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				4A7E90042F9F000100A10001 /* ServerHealthActivityAttributes.swift */,
+			);
+			path = SharedLiveActivity;
+			sourceTree = "<group>";
+		};
+		4A7E90052F9F000100A10001 /* OrbitalLiveActivityExtension */ = {
+			isa = PBXGroup;
+			children = (
+				4A7E901C2F9F000100A10001 /* Info.plist */,
+				4A7E90062F9F000100A10001 /* OrbitalLiveActivityBundle.swift */,
+				4A7E90072F9F000100A10001 /* ServerHealthLiveActivityWidget.swift */,
+			);
+			path = OrbitalLiveActivityExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,10 +170,12 @@
 				240C30E72F8DC61B0060B73F /* Sources */,
 				240C30E82F8DC61B0060B73F /* Frameworks */,
 				240C30E92F8DC61B0060B73F /* Resources */,
+				4A7E90122F9F000100A10001 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4A7E901B2F9F000100A10001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				240C30ED2F8DC61B0060B73F /* Orbital */,
@@ -173,6 +234,25 @@
 			productReference = 240C31042F8DC61E0060B73F /* OrbitalUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		4A7E900E2F9F000100A10001 /* OrbitalLiveActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A7E90192F9F000100A10001 /* Build configuration list for PBXNativeTarget "OrbitalLiveActivityExtension" */;
+			buildPhases = (
+				4A7E90102F9F000100A10001 /* Sources */,
+				4A7E90132F9F000100A10001 /* Frameworks */,
+				4A7E90142F9F000100A10001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OrbitalLiveActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = OrbitalLiveActivityExtension;
+			productReference = 4A7E90002F9F000100A10001 /* OrbitalLiveActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -193,6 +273,9 @@
 					240C31032F8DC61E0060B73F = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 240C30EA2F8DC61B0060B73F;
+					};
+					4A7E900E2F9F000100A10001 = {
+						CreatedOnToolsVersion = 26.4;
 					};
 				};
 			};
@@ -216,6 +299,7 @@
 				240C30EA2F8DC61B0060B73F /* Orbital */,
 				240C30F92F8DC61E0060B73F /* OrbitalTests */,
 				240C31032F8DC61E0060B73F /* OrbitalUITests */,
+				4A7E900E2F9F000100A10001 /* OrbitalLiveActivityExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -242,6 +326,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4A7E90142F9F000100A10001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -249,6 +340,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4A7E900A2F9F000100A10001 /* ServerHealthActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,6 +358,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4A7E90102F9F000100A10001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A7E900B2F9F000100A10001 /* ServerHealthActivityAttributes.swift in Sources */,
+				4A7E900C2F9F000100A10001 /* OrbitalLiveActivityBundle.swift in Sources */,
+				4A7E900D2F9F000100A10001 /* ServerHealthLiveActivityWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -278,6 +380,11 @@
 			isa = PBXTargetDependency;
 			target = 240C30EA2F8DC61B0060B73F /* Orbital */;
 			targetProxy = 240C31052F8DC61E0060B73F /* PBXContainerItemProxy */;
+		};
+		4A7E901B2F9F000100A10001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4A7E900E2F9F000100A10001 /* OrbitalLiveActivityExtension */;
+			targetProxy = 4A7E901A2F9F000100A10001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -414,6 +521,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Orbital uses Face ID to lock the app and protect access to your saved credentials.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -447,6 +555,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Orbital uses Face ID to lock the app and protect access to your saved credentials.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -553,6 +662,52 @@
 			};
 			name = Release;
 		};
+		4A7E90172F9F000100A10001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LZ3JY4ULL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OrbitalLiveActivityExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.Orbital.OrbitalLiveActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4A7E90182F9F000100A10001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LZ3JY4ULL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OrbitalLiveActivityExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.Orbital.OrbitalLiveActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -588,6 +743,15 @@
 			buildConfigurations = (
 				240C31152F8DC61E0060B73F /* Debug */,
 				240C31162F8DC61E0060B73F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4A7E90192F9F000100A10001 /* Build configuration list for PBXNativeTarget "OrbitalLiveActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A7E90172F9F000100A10001 /* Debug */,
+				4A7E90182F9F000100A10001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

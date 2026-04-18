@@ -277,6 +277,10 @@ struct ServerDetailView: View {
         metricsPollingService.lastError(for: server.id)
     }
 
+    private var isDynamicIslandEnabled: Bool {
+        metricsPollingService.isDynamicIslandEnabled(for: server.id)
+    }
+
     @ViewBuilder
     private func sectionView(for section: ServerDetailSection) -> some View {
         switch section {
@@ -339,6 +343,7 @@ struct ServerDetailView: View {
                     VStack(spacing: 12) {
                         LabeledRow(label: "Polling", value: isPolling ? "Active" : "Stopped")
                         LabeledRow(label: "Interval", value: "\(Int(pollingInterval))s")
+                        LabeledRow(label: "Dynamic Island", value: isDynamicIslandEnabled ? "Enabled" : "Off")
 
                         if let lastRecordedAt {
                             LabeledRow(
@@ -356,6 +361,24 @@ struct ServerDetailView: View {
                     Stepper(value: $pollingInterval, in: 5 ... 300, step: 5) {
                         Text("Poll Every \(Int(pollingInterval)) Seconds")
                             .font(.subheadline.weight(.medium))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Dynamic Island appears for one monitored server at a time and ends when monitoring stops or the feed goes stale.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Button {
+                            metricsPollingService.setDynamicIslandEnabled(!isDynamicIslandEnabled, for: server)
+                        } label: {
+                            Label(
+                                isDynamicIslandEnabled ? "Disable Dynamic Island" : "Show in Dynamic Island",
+                                systemImage: isDynamicIslandEnabled ? "iphone.gen3.slash" : "iphone.gen3.radiowaves.left.and.right"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!isPolling)
                     }
 
                     VStack(spacing: 10) {
@@ -704,5 +727,11 @@ struct FlowLayout: Layout {
     }
     .modelContainer(container)
     .environment(SSHService.shared)
-    .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
+    .environment(
+        MetricsPollingService(
+            modelContext: container.mainContext,
+            sshService: .shared,
+            liveActivityCoordinator: ServerHealthLiveActivityCoordinator()
+        )
+    )
 }

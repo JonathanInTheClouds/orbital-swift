@@ -462,5 +462,11 @@ private func containerEmptyStatePill(_ label: String, tint: Color) -> some View 
     return ContainersView()
         .modelContainer(container)
         .environment(SSHService.shared)
-        .environment(MetricsPollingService(modelContext: container.mainContext, sshService: .shared))
+        .environment(
+            MetricsPollingService(
+                modelContext: container.mainContext,
+                sshService: .shared,
+                liveActivityCoordinator: ServerHealthLiveActivityCoordinator()
+            )
+        )
 }
