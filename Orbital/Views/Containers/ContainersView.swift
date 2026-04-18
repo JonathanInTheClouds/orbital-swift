@@ -32,7 +32,6 @@ struct ContainersView: View {
 
     @State private var searchText = ""
     @State private var selectedFilter: ContainerListFilter = .all
-    @State private var selectedServerID: UUID?
     @State private var actionError: IdentifiableError?
 
     var body: some View {
@@ -58,18 +57,8 @@ struct ContainersView: View {
                                     .tag(filter)
                             }
                         }
-
-                        Picker("Server", selection: $selectedServerID) {
-                            Text("All Servers")
-                                .tag(Optional<UUID>.none)
-
-                            ForEach(availableServers, id: \.id) { server in
-                                Text(server.name)
-                                    .tag(Optional(server.id))
-                            }
-                        }
                     } label: {
-                        Image(systemName: selectedFilter == .all && selectedServerID == nil
+                        Image(systemName: selectedFilter == .all
                               ? "line.3.horizontal.decrease.circle"
                               : "line.3.horizontal.decrease.circle.fill")
                     }
@@ -92,97 +81,125 @@ struct ContainersView: View {
 
     private var containerList: some View {
         List {
-            ForEach(filteredEntries) { entry in
-                NavigationLink {
-                    ContainerDetailView(
-                        server: entry.server,
-                        runtime: entry.runtime,
-                        containerName: entry.container.name,
-                        initialContainer: entry.container
-                    )
-                } label: {
-                    ContainerCardView(
-                        container: entry.container,
-                        serverName: entry.server.name,
-                        runtime: entry.runtime,
-                        style: cardStyle(for: entry.id)
-                    )
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .swipeActions(edge: .trailing) {
-                    Button {
-                        toggleCardStyle(for: entry.id)
-                    } label: {
-                        Label(
-                            cardStyle(for: entry.id) == .expanded ? "Condense" : "Detail",
-                            systemImage: cardStyle(for: entry.id) == .expanded
-                                ? "rectangle.compress.vertical"
-                                : "rectangle.grid.1x2"
-                        )
-                    }
-                    .tint(.indigo)
-
-                    if entry.container.isRunning || entry.container.isPaused || entry.container.isRestarting {
-                        Button(role: .destructive) {
-                            Task { await performAction(.stop, on: entry) }
+            ForEach(groupedEntries, id: \.server.id) { group in
+                Section {
+                    ForEach(group.entries) { entry in
+                        NavigationLink {
+                            ContainerDetailView(
+                                server: entry.server,
+                                runtime: entry.runtime,
+                                containerName: entry.container.name,
+                                initialContainer: entry.container
+                            )
                         } label: {
-                            Label("Stop", systemImage: "stop.fill")
+                            ContainerCardView(
+                                container: entry.container,
+                                serverName: entry.server.name,
+                                runtime: entry.runtime,
+                                style: cardStyle(for: entry.id)
+                            )
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                         }
-                    } else {
-                        Button {
-                            Task { await performAction(.start, on: entry) }
-                        } label: {
-                            Label("Start", systemImage: "play.fill")
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing) {
+                            Button {
+                                toggleCardStyle(for: entry.id)
+                            } label: {
+                                Label(
+                                    cardStyle(for: entry.id) == .expanded ? "Condense" : "Detail",
+                                    systemImage: cardStyle(for: entry.id) == .expanded
+                                        ? "rectangle.compress.vertical"
+                                        : "rectangle.grid.1x2"
+                                )
+                            }
+                            .tint(.indigo)
+
+                            if entry.container.isRunning || entry.container.isPaused || entry.container.isRestarting {
+                                Button(role: .destructive) {
+                                    Task { await performAction(.stop, on: entry) }
+                                } label: {
+                                    Label("Stop", systemImage: "stop.fill")
+                                }
+                            } else {
+                                Button {
+                                    Task { await performAction(.start, on: entry) }
+                                } label: {
+                                    Label("Start", systemImage: "play.fill")
+                                }
+                                .tint(.green)
+                            }
                         }
-                        .tint(.green)
-                    }
-                }
-                .contextMenu {
-                    Button {
-                        toggleCardStyle(for: entry.id)
-                    } label: {
-                        Label(
-                            cardStyle(for: entry.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
-                            systemImage: cardStyle(for: entry.id) == .expanded
-                                ? "rectangle.compress.vertical"
-                                : "rectangle.grid.1x2"
-                        )
-                    }
+                        .contextMenu {
+                            Button {
+                                toggleCardStyle(for: entry.id)
+                            } label: {
+                                Label(
+                                    cardStyle(for: entry.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
+                                    systemImage: cardStyle(for: entry.id) == .expanded
+                                        ? "rectangle.compress.vertical"
+                                        : "rectangle.grid.1x2"
+                                )
+                            }
 
-                    Divider()
+                            Divider()
 
-                    Button {
-                        Task { await performAction(.start, on: entry) }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
+                            Button {
+                                Task { await performAction(.start, on: entry) }
+                            } label: {
+                                Label("Start", systemImage: "play.fill")
+                            }
+
+                            Button {
+                                Task { await performAction(.stop, on: entry) }
+                            } label: {
+                                Label("Stop", systemImage: "stop.fill")
+                            }
+
+                            Button {
+                                Task { await performAction(.restart, on: entry) }
+                            } label: {
+                                Label("Restart", systemImage: "arrow.clockwise")
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                Task { await performAction(.remove, on: entry) }
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
                     }
-
-                    Button {
-                        Task { await performAction(.stop, on: entry) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-
-                    Button {
-                        Task { await performAction(.restart, on: entry) }
-                    } label: {
-                        Label("Restart", systemImage: "arrow.clockwise")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        Task { await performAction(.remove, on: entry) }
-                    } label: {
-                        Label("Remove", systemImage: "trash")
-                    }
+                } header: {
+                    serverSectionHeader(server: group.server, runtime: group.entries.first?.runtime ?? .none)
                 }
             }
         }
         .listStyle(.plain)
-        .animation(.default, value: filteredEntries.map(\.id))
+        .animation(.default, value: groupedEntries.flatMap(\.entries).map(\.id))
+    }
+
+    private func serverSectionHeader(server: Server, runtime: ContainerRuntimeKind) -> some View {
+        HStack(spacing: 8) {
+            Text(server.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if runtime != .none {
+                Text(runtime.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .textCase(nil)
     }
 
     // MARK: - Empty State
@@ -266,24 +283,18 @@ struct ContainersView: View {
         ContentUnavailableView {
             Label(
                 "No Matching Containers",
-                systemImage: selectedFilter == .all && selectedServerID == nil ? "magnifyingglass" : "line.3.horizontal.decrease.circle"
+                systemImage: selectedFilter == .all ? "magnifyingglass" : "line.3.horizontal.decrease.circle"
             )
         } description: {
             if searchText.isEmpty {
                 Text(noResultsDescription)
             } else {
-                Text("No containers match “\(searchText)” with \(activeFilterDescription).")
+                Text("No containers match \"\(searchText)\" with \(activeFilterDescription).")
             }
         } actions: {
             if selectedFilter != .all {
                 Button("Show All Containers") {
                     selectedFilter = .all
-                }
-            }
-
-            if selectedServerID != nil {
-                Button("Show All Servers") {
-                    selectedServerID = nil
                 }
             }
         }
@@ -357,7 +368,6 @@ struct ContainersView: View {
     private var filteredEntries: [ContainerEntry] {
         sortedEntries.filter { entry in
             guard entry.container.matches(selectedFilter) else { return false }
-            guard selectedServerID == nil || entry.serverID == selectedServerID else { return false }
             guard !searchText.isEmpty else { return true }
 
             let q = searchText.lowercased()
@@ -367,36 +377,19 @@ struct ContainersView: View {
         }
     }
 
-    private var availableServers: [Server] {
-        let serverIDsWithContainers = Set(allEntries.map(\.serverID))
-        return servers.filter { serverIDsWithContainers.contains($0.id) }
-    }
-
-    private var selectedServerName: String? {
-        guard let selectedServerID else { return nil }
-        return availableServers.first(where: { $0.id == selectedServerID })?.name
+    private var groupedEntries: [(server: Server, entries: [ContainerEntry])] {
+        let byServer = Dictionary(grouping: filteredEntries, by: \.serverID)
+        return servers
+            .filter { byServer[$0.id] != nil }
+            .map { server in (server: server, entries: byServer[server.id]!) }
     }
 
     private var activeFilterDescription: String {
-        var parts: [String] = []
-
-        if selectedFilter != .all {
-            parts.append("the \(selectedFilter.title.lowercased()) filter")
-        }
-
-        if let selectedServerName {
-            parts.append("server \(selectedServerName)")
-        }
-
-        return parts.isEmpty ? "the current filters" : parts.joined(separator: " and ")
+        selectedFilter != .all ? "the \(selectedFilter.title.lowercased()) filter" : "the current filters"
     }
 
     private var noResultsDescription: String {
-        if selectedFilter == .all, let selectedServerName {
-            return "No containers are available for server \(selectedServerName)."
-        }
-
-        return "No containers match \(activeFilterDescription)."
+        "No containers match \(activeFilterDescription)."
     }
 
     // MARK: - Card Style
