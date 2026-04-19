@@ -100,6 +100,78 @@ final class OrbitalTests: XCTestCase {
         }
     }
 
+    func testMetricsCommandsRunInsidePOSIXShell() {
+        XCTAssertTrue(MetricsPollingService.metricsCommand.hasPrefix("/bin/sh <<'EOF'"))
+        XCTAssertTrue(MetricsPollingService.metricsCommand.hasSuffix("EOF"))
+        XCTAssertTrue(MetricsPollingService.macosMetricsCommand.hasPrefix("/bin/sh <<'EOF'"))
+        XCTAssertTrue(MetricsPollingService.macosMetricsCommand.hasSuffix("EOF"))
+    }
+
+    func testParseMetricsPayloadKeepsNormalizedMacOSRootDisk() throws {
+        let payload = try MetricsPollingService.parseMetricsPayload(
+            from: """
+            CPU 9.5
+            LOAD 0.10 0.20 0.30
+            UPTIME 180
+            MEM 1000 400 0 0
+            DISK / 846824664448 976797816832
+            """
+        )
+
+        XCTAssertEqual(payload.diskUsages.count, 1)
+        XCTAssertEqual(payload.diskUsages[0].mountPoint, "/")
+        XCTAssertEqual(payload.diskUsages[0].usedBytes, 846_824_664_448)
+        XCTAssertEqual(payload.diskUsages[0].totalBytes, 976_797_816_832)
+    }
+
+    func testPrimaryDiskUsagePrefersMacOSDataVolumeInLegacySnapshots() throws {
+        let snapshot = makeSnapshot(
+            cpuPercent: 12,
+            memUsedBytes: 3_000,
+            memTotalBytes: 8_000,
+            diskUsages: [
+                DiskUsage(mountPoint: "/", usedBytes: 12_161_460_000, totalBytes: 976_797_816_000),
+                DiskUsage(mountPoint: "/System/Volumes/Data", usedBytes: 846_824_664_000, totalBytes: 976_797_816_000)
+            ],
+            containerStatuses: []
+        )
+
+        let primaryDisk = try XCTUnwrap(snapshot.primaryDiskUsage)
+        XCTAssertEqual(primaryDisk.mountPoint, "/System/Volumes/Data")
+        XCTAssertGreaterThan(primaryDisk.usedPercent, 0.8)
+    }
+
+    func testLinuxMetricsFixturesParseAcrossDistros() throws {
+        for fixtureName in ["ubuntu_metrics", "debian_metrics", "fedora_metrics", "alpine_metrics"] {
+            let payload = try MetricsPollingService.parseMetricsPayload(from: fixture(named: fixtureName))
+
+            XCTAssertGreaterThanOrEqual(payload.cpuPercent, 0, "fixture=\(fixtureName)")
+            XCTAssertGreaterThan(payload.memTotalBytes, 0, "fixture=\(fixtureName)")
+            XCTAssertFalse(payload.diskUsages.isEmpty, "fixture=\(fixtureName)")
+            XCTAssertEqual(payload.diskUsages[0].mountPoint, "/", "fixture=\(fixtureName)")
+            XCTAssertFalse(payload.networkStats.isEmpty, "fixture=\(fixtureName)")
+            XCTAssertFalse(payload.containerStatuses.contains { $0.name.isEmpty }, "fixture=\(fixtureName)")
+        }
+    }
+
+    func testParseMetricsPayloadAcceptsOverlayRootDiskForContainerTargets() throws {
+        let payload = try MetricsPollingService.parseMetricsPayload(
+            from: """
+            CPU 5.0
+            LOAD 0.01 0.02 0.03
+            UPTIME 200
+            MEM 1000 500 0 0
+            DISK / 7221362688 106769133568
+            NET eth0 100 200
+            CONTAINER_RUNTIME|none|0
+            """
+        )
+
+        let primaryDisk = try XCTUnwrap(payload.diskUsages.first)
+        XCTAssertEqual(primaryDisk.mountPoint, "/")
+        XCTAssertGreaterThan(primaryDisk.totalBytes, primaryDisk.usedBytes)
+    }
+
     func testServerHealthLiveActivitySupportBuildsHealthyState() {
         let snapshot = makeSnapshot(
             cpuPercent: 22,
@@ -222,6 +294,15 @@ final class OrbitalTests: XCTestCase {
 
     private func matchingArchivedFile(suffix: String, in backups: [URL]) throws -> URL {
         try XCTUnwrap(backups.first(where: { $0.lastPathComponent.hasSuffix(suffix) }))
+    }
+
+    private func fixture(named name: String) throws -> String {
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent("\(name).txt")
+
+        return try String(contentsOf: fixtureURL, encoding: .utf8)
     }
 
     private func makeSnapshot(

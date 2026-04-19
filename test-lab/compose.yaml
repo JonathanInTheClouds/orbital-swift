@@ -1,0 +1,42 @@
+name: orbital-lab
+
+services:
+  ubuntu:
+    build:
+      context: .
+      dockerfile: images/deb/Dockerfile
+      args:
+        BASE_IMAGE: ubuntu:24.04
+    container_name: orbital-lab-ubuntu
+    hostname: orbital-lab-ubuntu
+    ports:
+      - "2222:22"
+
+  debian:
+    build:
+      context: .
+      dockerfile: images/deb/Dockerfile
+      args:
+        BASE_IMAGE: debian:12
+    container_name: orbital-lab-debian
+    hostname: orbital-lab-debian
+    ports:
+      - "2223:22"
+
+  fedora:
+    build:
+      context: .
+      dockerfile: images/fedora/Dockerfile
+    container_name: orbital-lab-fedora
+    hostname: orbital-lab-fedora
+    ports:
+      - "2224:22"
+
+  alpine:
+    build:
+      context: .
+      dockerfile: images/alpine/Dockerfile
+    container_name: orbital-lab-alpine
+    hostname: orbital-lab-alpine
+    ports:
+      - "2225:22"

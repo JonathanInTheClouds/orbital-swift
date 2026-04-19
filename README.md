@@ -68,6 +68,32 @@ Run the unit test target locally with:
 
 GitHub Actions also runs the same unit test command on every pull request and on pushes to `main`.
 
+## Linux Test Lab
+
+Orbital includes a local Compose-based SSH lab for Linux distro regression checks. The lab stands up disposable Ubuntu, Debian, Fedora, and Alpine targets that Orbital can connect to like normal servers.
+
+Start the lab:
+
+```bash
+./Scripts/lab-up
+```
+
+Run smoke checks against the live targets:
+
+```bash
+./Scripts/lab-smoke
+```
+
+Tear it down:
+
+```bash
+./Scripts/lab-down
+```
+
+The smoke script verifies Orbital's current Linux assumptions end-to-end over SSH: `uname -s`, the Linux metrics command, and presence of `CPU`, `LOAD`, `UPTIME`, `MEM`, and `DISK` tokens in the payload.
+
+> **Note:** The lab is for Linux coverage only. Containers are useful for shell and parser compatibility, but they are not a substitute for a real macOS target or a VM when validating Darwin-specific behavior.
+
 ---
 
 ## Architecture

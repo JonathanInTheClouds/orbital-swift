@@ -298,6 +298,10 @@ extension MetricsPollingService {
         fstype=$2
         mountpoint=$7
         [ -n "$mountpoint" ] || continue
+        if [ "$fstype" = "overlay" ] && [ "$mountpoint" = "/" ]; then
+            echo "DISK $mountpoint $(( $4 * 1024 )) $(( $3 * 1024 ))"
+            continue
+        fi
         case "$fstype" in
             tmpfs|devtmpfs|proc|sysfs|cgroup|cgroup2|mqueue|devpts|tracefs|debugfs|pstore|securityfs|configfs|overlay|squashfs|ramfs|autofs|fusectl|binfmt_misc|nsfs|hugetlbfs|rpc_pipefs|nfsd|bpf)
                 continue

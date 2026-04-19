@@ -1,0 +1,117 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SSH_KEY="$ROOT_DIR/test-lab/keys/orbital_lab_key"
+SWIFT_SOURCE="$ROOT_DIR/Orbital/Services/MetricsPollingService.swift"
+
+extract_linux_metrics_command() {
+    awk '
+        /static let metricsCommand = """/ { in_block = 1; next }
+        in_block && /^[[:space:]]*"""/ { exit }
+        in_block {
+            sub(/^    /, "")
+            print
+        }
+    ' "$SWIFT_SOURCE"
+}
+
+ssh_exec() {
+    port=$1
+    shift
+
+    ssh \
+        -i "$SSH_KEY" \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        -p "$port" \
+        orbital@127.0.0.1 \
+        "$@"
+}
+
+wait_for_ssh() {
+    port=$1
+    target_name=$2
+    attempts=45
+
+    while [ "$attempts" -gt 0 ]; do
+        if ssh_exec "$port" "echo ready" >/dev/null 2>&1; then
+            return 0
+        fi
+        attempts=$((attempts - 1))
+        sleep 1
+    done
+
+    echo "[$target_name] SSH did not come up on localhost:$port." >&2
+    echo "[$target_name] If you are using Podman on macOS, check 'podman compose ps' and confirm the port publish is active." >&2
+    echo "[$target_name] You can also test directly with: ssh -i test-lab/keys/orbital_lab_key -p $port orbital@127.0.0.1" >&2
+    return 1
+}
+
+run_metrics_command() {
+    port=$1
+    tmp_file=$(mktemp)
+    trap 'rm -f "$tmp_file"' EXIT INT TERM
+
+    extract_linux_metrics_command > "$tmp_file"
+
+    ssh \
+        -i "$SSH_KEY" \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        -p "$port" \
+        orbital@127.0.0.1 \
+        "sh -s" < "$tmp_file"
+
+    rm -f "$tmp_file"
+    trap - EXIT INT TERM
+}
+
+require_payload_marker() {
+    payload=$1
+    marker=$2
+    target=$3
+
+    case "$payload" in
+        *"$marker"*) ;;
+        *)
+            echo "[$target] Missing payload marker: $marker" >&2
+            exit 1
+            ;;
+    esac
+}
+
+smoke_target() {
+    name=$1
+    port=$2
+
+    printf '[%s] waiting for SSH on port %s\n' "$name" "$port"
+    wait_for_ssh "$port" "$name"
+
+    uname_value=$(ssh_exec "$port" "uname -s" | tr -d '\r')
+    if [ "$uname_value" != "Linux" ]; then
+        echo "[$name] Expected uname -s to be Linux, got: $uname_value" >&2
+        exit 1
+    fi
+
+    payload=$(run_metrics_command "$port")
+    require_payload_marker "$payload" "CPU " "$name"
+    require_payload_marker "$payload" "LOAD " "$name"
+    require_payload_marker "$payload" "UPTIME " "$name"
+    require_payload_marker "$payload" "MEM " "$name"
+    require_payload_marker "$payload" "DISK " "$name"
+
+    printf '[%s] ok\n' "$name"
+}
+
+smoke_target ubuntu 2222
+smoke_target debian 2223
+smoke_target fedora 2224
+smoke_target alpine 2225
+
+echo "Orbital lab smoke checks passed."

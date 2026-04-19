@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+COMPOSE_FILE="$ROOT_DIR/test-lab/compose.yaml"
+
+resolve_compose() {
+    if [ -n "${COMPOSE_CMD:-}" ]; then
+        printf '%s\n' "$COMPOSE_CMD"
+        return 0
+    fi
+
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        printf '%s\n' "docker compose"
+        return 0
+    fi
+
+    if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+        printf '%s\n' "podman compose"
+        return 0
+    fi
+
+    return 1
+}
+
+if COMPOSE=$(resolve_compose); then
+    :
+else
+    echo "No working Compose runtime found. Start Docker Desktop, or if you use Podman make sure 'podman info' succeeds before running the lab." >&2
+    exit 1
+fi
+
+echo "Using Compose command: $COMPOSE"
+sh -c "$COMPOSE -f \"$COMPOSE_FILE\" up -d --build"
+
+cat <<'EOF'
+
+Orbital lab targets are available on localhost:
+  ubuntu -> orbital@127.0.0.1:2222
+  debian -> orbital@127.0.0.1:2223
+  fedora -> orbital@127.0.0.1:2224
+  alpine -> orbital@127.0.0.1:2225
+
+Credentials:
+  username: orbital
+  password: orbital
+  ssh key:  test-lab/keys/orbital_lab_key
+EOF
