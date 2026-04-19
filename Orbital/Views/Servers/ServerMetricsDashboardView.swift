@@ -917,7 +917,16 @@ struct ServerMetricsDashboardView: View {
             break
         }
 
-        let excludedPrefixes = ["/run/", "/dev/", "/proc/", "/sys/"]
+        let excludedPrefixes = [
+            "/run/",
+            "/dev/",
+            "/proc/",
+            "/sys/",
+            "/System/Volumes/",
+            "/private/var/",
+            "/Library/Developer/CoreSimulator/",
+            "/Users/"
+        ]
         return !excludedPrefixes.contains { mountPoint.hasPrefix($0) }
     }
 
