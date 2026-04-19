@@ -256,6 +256,7 @@ extension MetricsPollingService {
     }
 
     static let metricsCommand = """
+    /bin/sh <<'EOF'
     cpu_sample() {
         awk '/^cpu / { idle=$5+$6; total=0; for (i=2; i<=NF; i++) total+=$i; print total, idle }' /proc/stat
     }
@@ -350,6 +351,7 @@ extension MetricsPollingService {
             echo "CONTAINER|$container_line"
         done
     fi
+    EOF
     """
 
     // MARK: - macOS metrics command
@@ -358,6 +360,7 @@ extension MetricsPollingService {
     // memory compression rather than a traditional swap partition.
 
     static let macosMetricsCommand = """
+    /bin/sh <<'EOF'
     export PATH="/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
     ncpu=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)
@@ -387,6 +390,11 @@ extension MetricsPollingService {
     [ "$mem_used" -lt 0 ] && mem_used=0
     echo "MEM $mem_total $mem_used 0 0"
 
+    has_data_volume=0
+    if df -kP /System/Volumes/Data >/dev/null 2>&1; then
+        has_data_volume=1
+    fi
+
     df -kP 2>/dev/null | while IFS= read -r line; do
         set -- $line
         [ "$1" = "Filesystem" ] && continue
@@ -394,8 +402,14 @@ extension MetricsPollingService {
         [ -n "$mountpoint" ] || continue
         case "$1" in devfs|map*) continue ;; esac
         case "$mountpoint" in
-            /System/Volumes/VM|/System/Volumes/Preboot|/System/Volumes/Recovery|/System/Volumes/Update|/System/Volumes/xarts|/System/Volumes/iSCPreboot|/System/Volumes/Hardware|/private/var/folders/*) continue ;;
+            /System/Volumes/VM|/System/Volumes/Preboot|/System/Volumes/Recovery|/System/Volumes/Update|/System/Volumes/xarts|/System/Volumes/iSCPreboot|/System/Volumes/Hardware|/System/Volumes/Data/home|/Library/Developer/CoreSimulator/*|/Users/*/Library/Developer/DVTDownloads/*|/private/var/folders/*) continue ;;
         esac
+        if [ "$has_data_volume" -eq 1 ] && [ "$mountpoint" = "/" ]; then
+            continue
+        fi
+        if [ "$mountpoint" = "/System/Volumes/Data" ]; then
+            mountpoint="/"
+        fi
         echo "DISK $mountpoint $(( $3 * 1024 )) $(( $2 * 1024 ))"
     done
 
@@ -430,6 +444,7 @@ extension MetricsPollingService {
             echo "CONTAINER|$container_line"
         done
     fi
+    EOF
     """
 
     static func parseMetricsPayload(from output: String) throws -> ParsedMetricsPayload {

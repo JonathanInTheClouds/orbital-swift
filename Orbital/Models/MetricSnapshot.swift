@@ -213,6 +213,10 @@ final class MetricSnapshot {
 }
 
 extension MetricSnapshot {
+    private var preferredRootMountPoint: String {
+        diskUsages.contains(where: { $0.mountPoint == "/System/Volumes/Data" }) ? "/System/Volumes/Data" : "/"
+    }
+
     var memoryUsageFraction: Double {
         guard memTotalBytes > 0 else { return 0 }
         return Double(memUsedBytes) / Double(memTotalBytes)
@@ -224,7 +228,7 @@ extension MetricSnapshot {
     }
 
     var primaryDiskUsage: DiskUsage? {
-        diskUsages.first(where: { $0.mountPoint == "/" }) ??
+        diskUsages.first(where: { $0.mountPoint == preferredRootMountPoint }) ??
         diskUsages.max(by: { $0.totalBytes < $1.totalBytes })
     }
 

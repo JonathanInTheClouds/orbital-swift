@@ -153,8 +153,8 @@ struct ServerMetricsDashboardView: View {
         return latestSnapshot.diskUsages
             .filter { isSelectableVolume($0.mountPoint) }
             .sorted {
-            if $0.mountPoint == "/" { return true }
-            if $1.mountPoint == "/" { return false }
+            if isPreferredPrimaryMountPoint($0.mountPoint) { return true }
+            if isPreferredPrimaryMountPoint($1.mountPoint) { return false }
             return $0.usedPercent > $1.usedPercent
         }
     }
@@ -177,7 +177,7 @@ struct ServerMetricsDashboardView: View {
     }
 
     private var primaryDisplayedDiskUsage: DiskUsage? {
-        diskRows.first(where: { $0.mountPoint == "/" }) ?? diskRows.first
+        diskRows.first(where: { isPreferredPrimaryMountPoint($0.mountPoint) }) ?? diskRows.first
     }
 
     private var latestNetworkRate: NetworkRate? {
@@ -919,6 +919,10 @@ struct ServerMetricsDashboardView: View {
 
         let excludedPrefixes = ["/run/", "/dev/", "/proc/", "/sys/"]
         return !excludedPrefixes.contains { mountPoint.hasPrefix($0) }
+    }
+
+    private func isPreferredPrimaryMountPoint(_ mountPoint: String) -> Bool {
+        mountPoint == "/" || mountPoint == "/System/Volumes/Data"
     }
 }
 
