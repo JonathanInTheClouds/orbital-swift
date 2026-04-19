@@ -6,6 +6,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SSH_KEY="$ROOT_DIR/test-lab/keys/orbital_lab_key"
 SWIFT_SOURCE="$ROOT_DIR/Orbital/Services/MetricsPollingService.swift"
 VERBOSE=0
+SSH_KEY_TEMP=""
 
 usage() {
     cat <<'EOF'
@@ -46,12 +47,24 @@ extract_linux_metrics_command() {
     ' "$SWIFT_SOURCE"
 }
 
+prepare_ssh_key() {
+    SSH_KEY_TEMP=$(mktemp)
+    cp "$SSH_KEY" "$SSH_KEY_TEMP"
+    chmod 600 "$SSH_KEY_TEMP"
+}
+
+cleanup() {
+    if [ -n "$SSH_KEY_TEMP" ] && [ -f "$SSH_KEY_TEMP" ]; then
+        rm -f "$SSH_KEY_TEMP"
+    fi
+}
+
 ssh_exec() {
     port=$1
     shift
 
     ssh \
-        -i "$SSH_KEY" \
+        -i "$SSH_KEY_TEMP" \
         -o BatchMode=yes \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
@@ -83,12 +96,11 @@ wait_for_ssh() {
 run_metrics_command() {
     port=$1
     tmp_file=$(mktemp)
-    trap 'rm -f "$tmp_file"' EXIT INT TERM
 
     extract_linux_metrics_command > "$tmp_file"
 
     ssh \
-        -i "$SSH_KEY" \
+        -i "$SSH_KEY_TEMP" \
         -o BatchMode=yes \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
@@ -98,7 +110,6 @@ run_metrics_command() {
         "sh -s" < "$tmp_file"
 
     rm -f "$tmp_file"
-    trap - EXIT INT TERM
 }
 
 require_payload_marker() {
@@ -143,6 +154,9 @@ smoke_target() {
 
     printf '[%s] ok\n' "$name"
 }
+
+prepare_ssh_key
+trap 'cleanup' EXIT INT TERM
 
 smoke_target ubuntu 2222
 smoke_target debian 2223

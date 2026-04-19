@@ -31,6 +31,11 @@ struct OrbitalApp: App {
                 container: container,
                 liveActivityCoordinator: liveActivityCoordinator
             )
+            if Self.shouldClearUITestKnownHosts {
+                Task {
+                    await Self.clearUITestKnownHosts()
+                }
+            }
         } catch {
             guard let storeURL else {
                 fatalError("Could not create ModelContainer: \(error)")
@@ -49,6 +54,11 @@ struct OrbitalApp: App {
                     container: container,
                     liveActivityCoordinator: liveActivityCoordinator
                 )
+                if Self.shouldClearUITestKnownHosts {
+                    Task {
+                        await Self.clearUITestKnownHosts()
+                    }
+                }
             } catch {
                 fatalError("Could not create ModelContainer: \(error)")
             }
@@ -72,6 +82,10 @@ extension OrbitalApp {
     static var isUITestingLab: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-testing-lab")
             || ProcessInfo.processInfo.environment["ORBITAL_UI_TEST_LAB"] == "1"
+    }
+
+    static var shouldClearUITestKnownHosts: Bool {
+        isUITesting || ProcessInfo.processInfo.environment["ORBITAL_UI_TEST_CLEAR_KNOWN_HOSTS"] == "1"
     }
 
     static var appSchema: Schema {
@@ -225,5 +239,17 @@ extension OrbitalApp {
         }
 
         try modelContext.save()
+    }
+
+    static func clearUITestKnownHosts() async {
+        let prefixes = [
+            "hostkey:127.0.0.1",
+            "hostkey:localhost"
+        ]
+        let allKeys = (try? await KeychainService.shared.allKeys()) ?? []
+
+        for key in allKeys where prefixes.contains(where: { key.hasPrefix($0) }) {
+            try? await KeychainService.shared.delete(key: key)
+        }
     }
 }

@@ -22,6 +22,7 @@ usage() {
 Usage: ./Scripts/ui-test-lab [all|ubuntu|debian|fedora|alpine]
 
 Runs Orbital UI tests against the local SSH lab targets.
+These tests enable the live lab-only `OrbitalLabUITests` suite.
 
 Examples:
   ./Scripts/ui-test-lab ubuntu
@@ -31,16 +32,16 @@ Examples:
 Optional environment overrides:
   DESTINATION='platform=iOS Simulator,name=iPhone 17,OS=26.4.1'
   DERIVED_DATA_PATH=/tmp/OrbitalDerivedData
+  LAB_UI_RETRIES=2
 EOF
 }
 
 test_target_for() {
   case "$1" in
-    all) echo "OrbitalUITests" ;;
-    ubuntu) echo "OrbitalUITests/OrbitalUITests/testLabUbuntuCanPollMetrics" ;;
-    debian) echo "OrbitalUITests/OrbitalUITests/testLabDebianCanPollMetrics" ;;
-    fedora) echo "OrbitalUITests/OrbitalUITests/testLabFedoraCanPollMetrics" ;;
-    alpine) echo "OrbitalUITests/OrbitalUITests/testLabAlpineCanPollMetrics" ;;
+    ubuntu) echo "OrbitalUITests/OrbitalLabUITests/testLabUbuntuCanPollMetrics" ;;
+    debian) echo "OrbitalUITests/OrbitalLabUITests/testLabDebianCanPollMetrics" ;;
+    fedora) echo "OrbitalUITests/OrbitalLabUITests/testLabFedoraCanPollMetrics" ;;
+    alpine) echo "OrbitalUITests/OrbitalLabUITests/testLabAlpineCanPollMetrics" ;;
     *)
       usage >&2
       exit 64
@@ -49,18 +50,59 @@ test_target_for() {
 }
 
 MODE="${1:-all}"
-TEST_TARGET=$(test_target_for "$MODE")
+RETRIES="${LAB_UI_RETRIES:-2}"
 
 cd "$ROOT_DIR"
 
 echo "Running lab UI tests: $MODE"
 echo "Destination: $DESTINATION"
 
-xcodebuild \
-  -project "$PROJECT" \
-  -scheme "$SCHEME" \
-  -derivedDataPath "$DERIVED_DATA_PATH" \
-  -destination "$DESTINATION" \
-  -parallel-testing-enabled NO \
-  -only-testing:"$TEST_TARGET" \
-  test
+run_xcodebuild() {
+  target="$1"
+
+  xcodebuild \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -derivedDataPath "$DERIVED_DATA_PATH" \
+    -destination "$DESTINATION" \
+    -parallel-testing-enabled NO \
+    -only-testing:"$target" \
+    test
+}
+
+run_mode() {
+  mode="$1"
+  attempt=1
+  target=$(test_target_for "$mode")
+
+  while [ "$attempt" -le "$RETRIES" ]; do
+    printf '\n==> %s (attempt %s/%s)\n' "$mode" "$attempt" "$RETRIES"
+
+    if run_xcodebuild "$target"; then
+      return 0
+    fi
+
+    if [ "$attempt" -lt "$RETRIES" ]; then
+      printf 'Retrying %s after failed simulator run.\n' "$mode" >&2
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
+case "$MODE" in
+  all)
+    for distro in ubuntu debian fedora alpine; do
+      run_mode "$distro"
+    done
+    ;;
+  ubuntu|debian|fedora|alpine)
+    run_mode "$MODE"
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac

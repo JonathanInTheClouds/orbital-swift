@@ -93,6 +93,9 @@ Run live simulator UI automation against the lab:
 ./Scripts/ui-test-lab all
 ```
 
+`ui-test-lab` targets the live SSH-backed `OrbitalLabUITests` suite only, so the default `OrbitalUITests` bundle stays lightweight and simulator-friendly.
+When you run `all`, it executes each distro as its own focused simulator run instead of one long XCTest session, which is more reliable.
+
 Run the whole lab flow in one command:
 
 ```bash
