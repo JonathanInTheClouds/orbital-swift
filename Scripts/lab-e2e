@@ -1,0 +1,85 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+UI_MODE="${1:-all}"
+TEARDOWN_MODE="${LAB_TEARDOWN:-never}"
+
+usage() {
+  cat <<'EOF'
+Usage: ./Scripts/lab-e2e [all|ubuntu|debian|fedora|alpine]
+
+Runs the full local Linux lab flow:
+  1. lab-up
+  2. lab-smoke
+  3. ui-test-lab
+
+Optional environment:
+  LAB_TEARDOWN=never     Leave the lab running after the script finishes. Default.
+  LAB_TEARDOWN=success   Tear the lab down only if all steps pass.
+  LAB_TEARDOWN=always    Always tear the lab down before exiting.
+
+Examples:
+  ./Scripts/lab-e2e
+  ./Scripts/lab-e2e alpine
+  LAB_TEARDOWN=always ./Scripts/lab-e2e all
+EOF
+}
+
+case "$UI_MODE" in
+  all|ubuntu|debian|fedora|alpine) ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac
+
+case "$TEARDOWN_MODE" in
+  never|success|always) ;;
+  *)
+    echo "Invalid LAB_TEARDOWN value: $TEARDOWN_MODE" >&2
+    exit 64
+    ;;
+esac
+
+cleanup() {
+  status=$1
+
+  case "$TEARDOWN_MODE" in
+    always)
+      "$ROOT_DIR/Scripts/lab-down"
+      ;;
+    success)
+      if [ "$status" -eq 0 ]; then
+        "$ROOT_DIR/Scripts/lab-down"
+      fi
+      ;;
+    never)
+      ;;
+  esac
+}
+
+run_step() {
+  printf '\n==> %s\n' "$1"
+  shift
+  "$@"
+}
+
+status=0
+trap 'status=$?; cleanup "$status"; exit "$status"' EXIT
+
+run_step "Bringing up lab" "$ROOT_DIR/Scripts/lab-up"
+run_step "Running smoke checks" "$ROOT_DIR/Scripts/lab-smoke"
+run_step "Running UI tests ($UI_MODE)" "$ROOT_DIR/Scripts/ui-test-lab" "$UI_MODE"
+
+cat <<EOF
+
+Lab end-to-end run passed.
+UI mode: $UI_MODE
+Teardown: $TEARDOWN_MODE
+EOF

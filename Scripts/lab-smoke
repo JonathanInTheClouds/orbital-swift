@@ -5,6 +5,35 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SSH_KEY="$ROOT_DIR/test-lab/keys/orbital_lab_key"
 SWIFT_SOURCE="$ROOT_DIR/Orbital/Services/MetricsPollingService.swift"
+VERBOSE=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./Scripts/lab-smoke [--verbose|-v]
+
+Runs SSH-level smoke checks against the local lab targets.
+
+Options:
+  -v, --verbose   Print the raw metrics payload for each target.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -v|--verbose)
+            VERBOSE=1
+            ;;
+        -h|--help|help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            exit 64
+            ;;
+    esac
+    shift
+done
 
 extract_linux_metrics_command() {
     awk '
@@ -105,6 +134,12 @@ smoke_target() {
     require_payload_marker "$payload" "UPTIME " "$name"
     require_payload_marker "$payload" "MEM " "$name"
     require_payload_marker "$payload" "DISK " "$name"
+
+    if [ "$VERBOSE" -eq 1 ]; then
+        printf '[%s] payload:\n' "$name"
+        printf '%s\n' "$payload"
+        printf '\n'
+    fi
 
     printf '[%s] ok\n' "$name"
 }

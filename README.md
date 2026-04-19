@@ -82,6 +82,7 @@ Run smoke checks against the live targets:
 
 ```bash
 ./Scripts/lab-smoke
+./Scripts/lab-smoke --verbose
 ```
 
 Run live simulator UI automation against the lab:
@@ -90,6 +91,13 @@ Run live simulator UI automation against the lab:
 ./Scripts/ui-test-lab ubuntu
 ./Scripts/ui-test-lab alpine
 ./Scripts/ui-test-lab all
+```
+
+Run the whole lab flow in one command:
+
+```bash
+./Scripts/lab-e2e
+LAB_TEARDOWN=always ./Scripts/lab-e2e alpine
 ```
 
 Tear it down:
