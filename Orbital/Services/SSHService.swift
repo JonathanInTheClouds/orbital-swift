@@ -121,9 +121,10 @@ struct SSHConnectionTarget: Sendable {
 
 struct SSHHostKeyVerifier: Sendable {
     let host: String
+    let port: Int
 
     private var keychainKey: String {
-        "hostkey:\(host)"
+        "hostkey:\(host):\(port)"
     }
 
     func validate(fingerprint: String) async throws {
@@ -296,7 +297,10 @@ func authenticationMaterial(for target: SSHConnectionTarget) async throws -> SSH
     case .password:
         log.debug("[\(target.serverName)] Auth method: password, user=\(target.username)")
         let password: String
-        if target.credentialRef.isEmpty {
+        if let inlinePassword = target.credentialRef.uiTestInlinePassword {
+            password = inlinePassword
+            log.debug("[\(target.serverName)] Loaded inline UI test password credential")
+        } else if target.credentialRef.isEmpty {
             log.warning("[\(target.serverName)] credentialRef is empty — connecting with empty password")
             password = ""
         } else {
@@ -310,6 +314,14 @@ func authenticationMaterial(for target: SSHConnectionTarget) async throws -> SSH
         let keyData = try await KeychainService.shared.load(key: target.credentialRef)
         log.debug("[\(target.serverName)] Loaded \(keyData.count)-byte key from Keychain")
         return .privateKey(username: target.username, privateKeyData: keyData)
+    }
+}
+
+private extension String {
+    var uiTestInlinePassword: String? {
+        let prefix = "ui-test-password:"
+        guard hasPrefix(prefix) else { return nil }
+        return String(dropFirst(prefix.count))
     }
 }
 
@@ -484,7 +496,7 @@ final class LibsshBackend: SSHBackend, @unchecked Sendable {
             host: target.host,
             port: target.port,
             authentication: try await authenticationMaterial(for: target),
-            hostKeyVerifier: SSHHostKeyVerifier(host: target.host),
+            hostKeyVerifier: SSHHostKeyVerifier(host: target.host, port: target.port),
             initialTerminalSize: initialTerminalSize
         )
         return try await bridge.connect(
@@ -505,7 +517,7 @@ final class LibsshBackend: SSHBackend, @unchecked Sendable {
             host: target.host,
             port: target.port,
             authentication: try await authenticationMaterial(for: target),
-            hostKeyVerifier: SSHHostKeyVerifier(host: target.host),
+            hostKeyVerifier: SSHHostKeyVerifier(host: target.host, port: target.port),
             initialTerminalSize: .default
         )
         return try await bridge.makeCommandTransport(

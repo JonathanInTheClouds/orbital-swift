@@ -22,6 +22,9 @@ struct OrbitalApp: App {
         do {
             let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
             try? Self.cleanupMetricSnapshots(in: container.mainContext)
+            if Self.isUITestingLab {
+                try? Self.seedUITestLabServers(in: container.mainContext)
+            }
             self.sharedModelContainer = container
             self.liveActivityCoordinator = liveActivityCoordinator
             self.metricsPollingService = Self.makeMetricsPollingService(
@@ -37,6 +40,9 @@ struct OrbitalApp: App {
                 try Self.archiveIncompatibleStore(at: storeURL)
                 let container = try Self.makeContainer(schema: schema, storeURL: storeURL)
                 try? Self.cleanupMetricSnapshots(in: container.mainContext)
+                if Self.isUITestingLab {
+                    try? Self.seedUITestLabServers(in: container.mainContext)
+                }
                 self.sharedModelContainer = container
                 self.liveActivityCoordinator = liveActivityCoordinator
                 self.metricsPollingService = Self.makeMetricsPollingService(
@@ -61,6 +67,11 @@ struct OrbitalApp: App {
 extension OrbitalApp {
     static var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-testing")
+    }
+
+    static var isUITestingLab: Bool {
+        ProcessInfo.processInfo.arguments.contains("--ui-testing-lab")
+            || ProcessInfo.processInfo.environment["ORBITAL_UI_TEST_LAB"] == "1"
     }
 
     static var appSchema: Schema {
@@ -151,5 +162,68 @@ extension OrbitalApp {
         if deletedAny {
             try modelContext.save()
         }
+    }
+
+    static func seedUITestLabServers(in modelContext: ModelContext) throws {
+        for server in try modelContext.fetch(FetchDescriptor<Server>()) {
+            modelContext.delete(server)
+        }
+
+        for snapshot in try modelContext.fetch(FetchDescriptor<MetricSnapshot>()) {
+            modelContext.delete(snapshot)
+        }
+
+        let servers = [
+            Server(
+                name: "Lab Ubuntu",
+                host: "127.0.0.1",
+                port: 2222,
+                username: "orbital",
+                authMethod: .password,
+                credentialRef: "ui-test-password:orbital",
+                tags: ["lab", "ubuntu"],
+                notes: "Seeded live UI test target",
+                colorTag: "orange"
+            ),
+            Server(
+                name: "Lab Debian",
+                host: "127.0.0.1",
+                port: 2223,
+                username: "orbital",
+                authMethod: .password,
+                credentialRef: "ui-test-password:orbital",
+                tags: ["lab", "debian"],
+                notes: "Seeded live UI test target",
+                colorTag: "blue"
+            ),
+            Server(
+                name: "Lab Fedora",
+                host: "127.0.0.1",
+                port: 2224,
+                username: "orbital",
+                authMethod: .password,
+                credentialRef: "ui-test-password:orbital",
+                tags: ["lab", "fedora"],
+                notes: "Seeded live UI test target",
+                colorTag: "red"
+            ),
+            Server(
+                name: "Lab Alpine",
+                host: "127.0.0.1",
+                port: 2225,
+                username: "orbital",
+                authMethod: .password,
+                credentialRef: "ui-test-password:orbital",
+                tags: ["lab", "alpine"],
+                notes: "Seeded live UI test target",
+                colorTag: "green"
+            )
+        ]
+
+        for server in servers {
+            modelContext.insert(server)
+        }
+
+        try modelContext.save()
     }
 }

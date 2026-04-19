@@ -1135,6 +1135,10 @@ private struct MetricGaugeCard: View {
         .padding(.leading, 18)
         .padding(.trailing, 14)
         .padding(.vertical, 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(valueText)
+        .accessibilityIdentifier("metrics.gauge.\(title.lowercased().replacingOccurrences(of: "/", with: "_"))")
         .background {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemBackground))

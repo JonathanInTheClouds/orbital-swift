@@ -256,6 +256,7 @@ struct AddEditServerView: View {
                                 Color(uiColor: .secondarySystemBackground),
                                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                             )
+                            .accessibilityIdentifier("serverEditor.identity.name")
                             .focused($focusedField, equals: .displayName)
                             .id(ServerEditorScrollTarget.identityTop)
                     }
@@ -272,6 +273,7 @@ struct AddEditServerView: View {
                         prompt: "192.168.1.100",
                         text: $host,
                         isRequired: true,
+                        identifier: "serverEditor.connection.host",
                         focusedField: $focusedField,
                         field: .host,
                         scrollTarget: .host
@@ -286,6 +288,7 @@ struct AddEditServerView: View {
                             prompt: "22",
                             text: $portText,
                             isRequired: true,
+                            identifier: "serverEditor.connection.port",
                             focusedField: $focusedField,
                             field: .port,
                             scrollTarget: .port
@@ -297,6 +300,7 @@ struct AddEditServerView: View {
                             prompt: "root",
                             text: $username,
                             isRequired: true,
+                            identifier: "serverEditor.connection.username",
                             focusedField: $focusedField,
                             field: .username,
                             scrollTarget: .username
@@ -310,6 +314,7 @@ struct AddEditServerView: View {
                         prompt: "Optional bastion host",
                         text: $jumpHostRef,
                         isRequired: false,
+                        identifier: "serverEditor.connection.jumpHost",
                         focusedField: $focusedField,
                         field: .jumpHost,
                         scrollTarget: .jumpHost
@@ -329,6 +334,7 @@ struct AddEditServerView: View {
                             title: "Password",
                             prompt: "Optional if already in Keychain",
                             text: $passwordCredential,
+                            identifier: "serverEditor.authentication.password",
                             focusedField: $focusedField,
                             field: .password,
                             scrollTarget: .password
@@ -352,6 +358,7 @@ struct AddEditServerView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 12)
                                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .accessibilityIdentifier("serverEditor.details.tagInput")
                                 .focused($focusedField, equals: .tag)
                                 .id(ServerEditorScrollTarget.tag)
                                 .onSubmit { addTag() }
@@ -395,6 +402,7 @@ struct AddEditServerView: View {
                             .lineLimit(5...8)
                             .padding(14)
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .accessibilityIdentifier("serverEditor.details.notes")
                             .focused($focusedField, equals: .notes)
                             .id(ServerEditorScrollTarget.notes)
                     }
@@ -478,6 +486,7 @@ struct AddEditServerView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("serverEditor.authentication.method.\(method.rawValue)")
             }
         }
     }
@@ -697,6 +706,7 @@ struct AddEditServerView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OrbitalSecondaryButtonStyle())
+            .accessibilityIdentifier("serverEditor.action.back")
             .opacity(currentStep == .identity ? 0.45 : 1)
             .disabled(currentStep == .identity)
 
@@ -723,6 +733,7 @@ struct AddEditServerView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(OrbitalPrimaryButtonStyle(tint: selectedColor))
+            .accessibilityIdentifier("serverEditor.action.primary")
             .disabled(isSaving || !canProceedFromCurrentStep)
         }
         .padding(.horizontal, 16)
@@ -904,13 +915,17 @@ struct AddEditServerView: View {
         let finalCredentialRef: String
         if authMethod == .password {
             if !passwordCredential.isEmpty {
-                do {
-                    try await KeychainService.shared.saveString(passwordCredential, key: credentialKey)
-                } catch {
-                    saveError = error.localizedDescription
-                    return
+                if OrbitalApp.isUITesting {
+                    finalCredentialRef = "ui-test-password:\(passwordCredential)"
+                } else {
+                    do {
+                        try await KeychainService.shared.saveString(passwordCredential, key: credentialKey)
+                    } catch {
+                        saveError = error.localizedDescription
+                        return
+                    }
+                    finalCredentialRef = credentialKey
                 }
-                finalCredentialRef = credentialKey
             } else {
                 // No password entered — keep existing ref (or empty for new servers)
                 finalCredentialRef = server?.credentialRef.hasPrefix("sshkey:") == true ? "" : (server?.credentialRef ?? "")
@@ -1071,6 +1086,7 @@ private struct InputField: View {
     let prompt: String
     @Binding var text: String
     let isRequired: Bool
+    var identifier: String? = nil
     var focusedField: FocusState<ServerEditorField?>.Binding? = nil
     var field: ServerEditorField? = nil
     var scrollTarget: ServerEditorScrollTarget? = nil
@@ -1091,6 +1107,7 @@ private struct InputField: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .applyAccessibilityIdentifier(identifier)
                 .applyFocus(focusedField, equals: field)
                 .applyScrollID(scrollTarget)
         }
@@ -1101,6 +1118,7 @@ private struct SecureInputField: View {
     let title: String
     let prompt: String
     @Binding var text: String
+    var identifier: String? = nil
     var focusedField: FocusState<ServerEditorField?>.Binding? = nil
     var field: ServerEditorField? = nil
     var scrollTarget: ServerEditorScrollTarget? = nil
@@ -1115,6 +1133,7 @@ private struct SecureInputField: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .applyAccessibilityIdentifier(identifier)
                 .applyFocus(focusedField, equals: field)
                 .applyScrollID(scrollTarget)
         }
@@ -1138,6 +1157,15 @@ private extension View {
     func applyScrollID(_ target: ServerEditorScrollTarget?) -> some View {
         if let target {
             self.id(target)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func applyAccessibilityIdentifier(_ identifier: String?) -> some View {
+        if let identifier {
+            self.accessibilityIdentifier(identifier)
         } else {
             self
         }

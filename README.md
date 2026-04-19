@@ -84,6 +84,14 @@ Run smoke checks against the live targets:
 ./Scripts/lab-smoke
 ```
 
+Run live simulator UI automation against the lab:
+
+```bash
+./Scripts/ui-test-lab ubuntu
+./Scripts/ui-test-lab alpine
+./Scripts/ui-test-lab all
+```
+
 Tear it down:
 
 ```bash

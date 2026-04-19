@@ -1,0 +1,66 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+export HOME="$ROOT_DIR"
+export TMPDIR="${TMPDIR:-/tmp/}"
+export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-/tmp/OrbitalModuleCache}"
+export SWIFTPM_PACKAGECACHE_PATH="${SWIFTPM_PACKAGECACHE_PATH:-/tmp/OrbitalSwiftPMCache}"
+export CFFIXED_USER_HOME="$HOME"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT_DIR/.cache}"
+export SWIFT_MODULE_CACHE_PATH="${SWIFT_MODULE_CACHE_PATH:-/tmp/OrbitalSwiftModuleCache}"
+
+PROJECT="Orbital.xcodeproj"
+SCHEME="Orbital"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/OrbitalDerivedData}"
+DESTINATION="${DESTINATION:-platform=iOS Simulator,name=iPhone 17,OS=26.4.1}"
+
+usage() {
+  cat <<'EOF'
+Usage: ./Scripts/ui-test-lab [all|ubuntu|debian|fedora|alpine]
+
+Runs Orbital UI tests against the local SSH lab targets.
+
+Examples:
+  ./Scripts/ui-test-lab ubuntu
+  ./Scripts/ui-test-lab alpine
+  ./Scripts/ui-test-lab all
+
+Optional environment overrides:
+  DESTINATION='platform=iOS Simulator,name=iPhone 17,OS=26.4.1'
+  DERIVED_DATA_PATH=/tmp/OrbitalDerivedData
+EOF
+}
+
+test_target_for() {
+  case "$1" in
+    all) echo "OrbitalUITests" ;;
+    ubuntu) echo "OrbitalUITests/OrbitalUITests/testLabUbuntuCanPollMetrics" ;;
+    debian) echo "OrbitalUITests/OrbitalUITests/testLabDebianCanPollMetrics" ;;
+    fedora) echo "OrbitalUITests/OrbitalUITests/testLabFedoraCanPollMetrics" ;;
+    alpine) echo "OrbitalUITests/OrbitalUITests/testLabAlpineCanPollMetrics" ;;
+    *)
+      usage >&2
+      exit 64
+      ;;
+  esac
+}
+
+MODE="${1:-all}"
+TEST_TARGET=$(test_target_for "$MODE")
+
+cd "$ROOT_DIR"
+
+echo "Running lab UI tests: $MODE"
+echo "Destination: $DESTINATION"
+
+xcodebuild \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  -destination "$DESTINATION" \
+  -parallel-testing-enabled NO \
+  -only-testing:"$TEST_TARGET" \
+  test

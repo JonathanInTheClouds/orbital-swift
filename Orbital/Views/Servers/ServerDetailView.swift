@@ -401,6 +401,7 @@ struct ServerDetailView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .accessibilityIdentifier("server.detail.pollNow")
 
                             if isPolling {
                                 Button(role: .destructive) {

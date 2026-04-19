@@ -105,6 +105,8 @@ struct ServerListView: View {
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
+                .accessibilityIdentifier(serverRowIdentifier(for: server.name))
+                .accessibilityLabel(server.name)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .swipeActions(edge: .leading) {
@@ -392,7 +394,9 @@ struct ServerListView: View {
     }
 
     private func presentAddServer() {
-        LocalNetworkAuthorizationRequester.shared.requestIfNeeded()
+        if !OrbitalApp.isUITesting {
+            LocalNetworkAuthorizationRequester.shared.requestIfNeeded()
+        }
         showAddServer = true
     }
 }
@@ -404,6 +408,14 @@ private func emptyStatePill(_ label: String, tint: Color) -> some View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(tint.opacity(0.12), in: Capsule())
+}
+
+func serverRowIdentifier(for serverName: String) -> String {
+    let sanitizedName = serverName
+        .lowercased()
+        .replacingOccurrences(of: " ", with: "_")
+        .replacingOccurrences(of: ".", with: "_")
+    return "servers.row.\(sanitizedName)"
 }
 
 // MARK: - Helpers
