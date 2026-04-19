@@ -16,6 +16,8 @@ struct ContainersView: View {
     @Query(sort: \Server.name) private var servers: [Server]
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
+    @AppStorage("serverContainerCardStyleByServerID") private var cardStyleStorage = ""
+
     @State private var searchText = ""
 
     var body: some View {
@@ -42,7 +44,12 @@ struct ContainersView: View {
             VStack(spacing: 16) {
                 ForEach(filteredServers) { server in
                     if let snapshot = latestSnapshotByServerID[server.id] {
-                        ServerContainerCard(server: server, snapshot: snapshot)
+                        ServerContainerCard(
+                            server: server,
+                            snapshot: snapshot,
+                            style: cardStyle(for: server.id),
+                            onToggleStyle: { toggleCardStyle(for: server.id) }
+                        )
                     }
                 }
             }
@@ -171,13 +178,39 @@ struct ContainersView: View {
         let q = searchText.lowercased()
         return serversWithSnapshots.filter { $0.name.lowercased().contains(q) }
     }
+
+    // MARK: - Card Style
+
+    private var cardStylesByServerID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
+    }
+
+    private func cardStyle(for serverID: UUID) -> ServerContainerCardStyle {
+        guard let raw = cardStylesByServerID[serverID.uuidString],
+              let style = ServerContainerCardStyle(rawValue: raw) else { return .expanded }
+        return style
+    }
+
+    private func toggleCardStyle(for serverID: UUID) {
+        let next: ServerContainerCardStyle = cardStyle(for: serverID) == .expanded ? .condensed : .expanded
+        var styles = cardStylesByServerID
+        styles[serverID.uuidString] = next.rawValue
+        cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
 }
 
 // MARK: - Server Container Card
 
+enum ServerContainerCardStyle: String {
+    case expanded
+    case condensed
+}
+
 private struct ServerContainerCard: View {
     let server: Server
     let snapshot: MetricSnapshot
+    var style: ServerContainerCardStyle = .expanded
+    var onToggleStyle: (() -> Void)? = nil
 
     private var accentColor: Color {
         serverAccentColor(server.colorTag)
@@ -200,6 +233,37 @@ private struct ServerContainerCard: View {
     }
 
     var body: some View {
+        Group {
+            switch style {
+            case .expanded:
+                expandedCard
+            case .condensed:
+                condensedCard
+            }
+        }
+        .contextMenu {
+            Button {
+                onToggleStyle?()
+            } label: {
+                Label(
+                    style == .expanded ? "Condense Card" : "Expand Card",
+                    systemImage: style == .expanded
+                        ? "rectangle.compress.vertical"
+                        : "rectangle.grid.1x2"
+                )
+            }
+
+            NavigationLink {
+                ServerContainerListView(server: server)
+            } label: {
+                Label("See All Containers", systemImage: "shippingbox")
+            }
+        }
+    }
+
+    // MARK: - Expanded
+
+    private var expandedCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerSection
 
@@ -216,24 +280,86 @@ private struct ServerContainerCard: View {
 
             seeAllButton
         }
-        .background {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            accentColor.opacity(0.18),
-                            accentColor.opacity(0.06),
-                            Color(uiColor: .secondarySystemBackground)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        .cardBackground(accentColor: accentColor)
+    }
+
+    // MARK: - Condensed
+
+    private var condensedCard: some View {
+        NavigationLink {
+            ServerContainerListView(server: server)
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(accentColor.opacity(0.16))
+                        .frame(width: 38, height: 38)
+
+                    Image(systemName: "shippingbox")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(accentColor)
                 }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(server.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(snapshot.containerRuntimeReachable ? Color.green : Color.secondary)
+                            .frame(width: 5, height: 5)
+
+                        condensedStatPills
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if snapshot.containerRuntime != .none {
+                    Text(snapshot.containerRuntime.displayName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(accentColor)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(accentColor.opacity(0.12), in: Capsule())
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .cardBackground(accentColor: accentColor)
         }
+        .buttonStyle(.plain)
+    }
+
+    private var condensedStatPills: some View {
+        HStack(spacing: 5) {
+            if snapshot.unhealthyContainerCount > 0 {
+                condensedPill("\(snapshot.unhealthyContainerCount) unhealthy", tint: .red)
+            } else if snapshot.restartingContainerCount > 0 {
+                condensedPill("\(snapshot.restartingContainerCount) restarting", tint: .orange)
+            }
+
+            condensedPill("\(snapshot.runningContainerCount) running", tint: .green)
+
+            Text("· \(snapshot.containerStatuses.count) total")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func condensedPill(_ label: String, tint: Color) -> some View {
+        Text(label)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
     }
 
     // MARK: - Header
@@ -413,6 +539,31 @@ private struct ContainerStatTile: View {
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.secondary.opacity(0.10))
+        }
+    }
+}
+
+// MARK: - Card Background Modifier
+
+private extension View {
+    func cardBackground(accentColor: Color) -> some View {
+        self.background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            accentColor.opacity(0.18),
+                            accentColor.opacity(0.06),
+                            Color(uiColor: .secondarySystemBackground)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                }
         }
     }
 }
