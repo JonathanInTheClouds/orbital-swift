@@ -8,54 +8,256 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Layout Style
+
+enum ContainersLayoutStyle: String {
+    case serverCards
+    case containerList
+}
+
+// MARK: - Container Entry (used by classic layout)
+
+struct ContainerEntry: Identifiable {
+    var id: String { "\(serverID.uuidString)_\(container.name)" }
+    let server: Server
+    let serverID: UUID
+    let runtime: ContainerRuntimeKind
+    let container: ContainerStatusSnapshot
+    let snapshotDate: Date
+}
+
 // MARK: - View
 
 struct ContainersView: View {
+    @Environment(SSHService.self) private var sshService
     @Environment(MetricsPollingService.self) private var metricsPollingService
 
     @Query(sort: \Server.name) private var servers: [Server]
     @Query(sort: \MetricSnapshot.recordedAt, order: .reverse) private var snapshots: [MetricSnapshot]
 
-    @AppStorage("serverContainerCardStyleByServerID") private var cardStyleStorage = ""
+    @AppStorage("containersLayoutStyle") private var layoutStyle: ContainersLayoutStyle = .serverCards
+    @AppStorage("containerCardStyleByEntryID") private var cardStyleStorage = ""
+    @AppStorage("serverContainerCardStyleByServerID") private var serverCardStyleStorage = ""
 
     @State private var searchText = ""
+    @State private var selectedFilter: ContainerListFilter = .all
+    @State private var actionError: IdentifiableError?
 
     var body: some View {
         NavigationStack {
             Group {
-                if serversWithSnapshots.isEmpty {
-                    emptyState
-                } else if filteredServers.isEmpty {
-                    searchEmptyState
-                } else {
-                    serverCardList
+                switch layoutStyle {
+                case .serverCards:
+                    serverCardsContent
+                case .containerList:
+                    classicContent
                 }
             }
             .background(listBackground)
             .navigationTitle("Containers")
-            .searchable(text: $searchText, prompt: "Search servers")
-        }
-    }
+            .searchable(
+                text: $searchText,
+                prompt: layoutStyle == .serverCards ? "Search servers" : "Search containers"
+            )
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            layoutStyle = layoutStyle == .serverCards ? .containerList : .serverCards
+                        }
+                    } label: {
+                        Image(systemName: layoutStyle == .serverCards ? "list.bullet" : "square.grid.2x2")
+                    }
+                    .accessibilityLabel(layoutStyle == .serverCards ? "Switch to list layout" : "Switch to card layout")
+                }
 
-    // MARK: - Content
-
-    private var serverCardList: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                ForEach(filteredServers) { server in
-                    if let snapshot = latestSnapshotByServerID[server.id] {
-                        ServerContainerCard(
-                            server: server,
-                            snapshot: snapshot,
-                            style: cardStyle(for: server.id),
-                            onToggleStyle: { toggleCardStyle(for: server.id) }
-                        )
+                if layoutStyle == .containerList {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Picker("Status", selection: $selectedFilter) {
+                                ForEach(ContainerListFilter.allCases) { filter in
+                                    Label(filter.title, systemImage: filter.systemImage)
+                                        .tag(filter)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: selectedFilter == .all
+                                  ? "line.3.horizontal.decrease.circle"
+                                  : "line.3.horizontal.decrease.circle.fill")
+                        }
+                        .accessibilityLabel("Filter containers")
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .alert(
+                "Container Action Failed",
+                isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
+            ) {
+                Button("OK") { actionError = nil }
+            } message: {
+                Text(actionError?.message ?? "")
+            }
         }
+    }
+
+    // MARK: - Server Cards Layout
+
+    @ViewBuilder
+    private var serverCardsContent: some View {
+        if serversWithSnapshots.isEmpty {
+            emptyState
+        } else if filteredServers.isEmpty {
+            searchEmptyState
+        } else {
+            ScrollView {
+                VStack(spacing: 16) {
+                    ForEach(filteredServers) { server in
+                        if let snapshot = latestSnapshotByServerID[server.id] {
+                            ServerContainerCard(
+                                server: server,
+                                snapshot: snapshot,
+                                style: serverCardStyle(for: server.id),
+                                onToggleStyle: { toggleServerCardStyle(for: server.id) }
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+            }
+        }
+    }
+
+    // MARK: - Classic List Layout
+
+    @ViewBuilder
+    private var classicContent: some View {
+        if allEntries.isEmpty {
+            emptyState
+        } else if filteredEntries.isEmpty {
+            filteredEmptyState
+        } else {
+            List {
+                ForEach(groupedEntries, id: \.server.id) { group in
+                    Section {
+                        ForEach(group.entries) { entry in
+                            NavigationLink {
+                                ContainerDetailView(
+                                    server: entry.server,
+                                    runtime: entry.runtime,
+                                    containerName: entry.container.name,
+                                    initialContainer: entry.container
+                                )
+                            } label: {
+                                ContainerCardView(
+                                    container: entry.container,
+                                    serverName: entry.server.name,
+                                    runtime: entry.runtime,
+                                    style: containerCardStyle(for: entry.id)
+                                )
+                                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    toggleContainerCardStyle(for: entry.id)
+                                } label: {
+                                    Label(
+                                        containerCardStyle(for: entry.id) == .expanded ? "Condense" : "Detail",
+                                        systemImage: containerCardStyle(for: entry.id) == .expanded
+                                            ? "rectangle.compress.vertical"
+                                            : "rectangle.grid.1x2"
+                                    )
+                                }
+                                .tint(.indigo)
+
+                                if entry.container.isRunning || entry.container.isPaused || entry.container.isRestarting {
+                                    Button(role: .destructive) {
+                                        Task { await performAction(.stop, on: entry) }
+                                    } label: {
+                                        Label("Stop", systemImage: "stop.fill")
+                                    }
+                                } else {
+                                    Button {
+                                        Task { await performAction(.start, on: entry) }
+                                    } label: {
+                                        Label("Start", systemImage: "play.fill")
+                                    }
+                                    .tint(.green)
+                                }
+                            }
+                            .contextMenu {
+                                Button {
+                                    toggleContainerCardStyle(for: entry.id)
+                                } label: {
+                                    Label(
+                                        containerCardStyle(for: entry.id) == .expanded ? "Show Condensed Card" : "Show Detailed Card",
+                                        systemImage: containerCardStyle(for: entry.id) == .expanded
+                                            ? "rectangle.compress.vertical"
+                                            : "rectangle.grid.1x2"
+                                    )
+                                }
+
+                                Divider()
+
+                                Button {
+                                    Task { await performAction(.start, on: entry) }
+                                } label: {
+                                    Label("Start", systemImage: "play.fill")
+                                }
+
+                                Button {
+                                    Task { await performAction(.stop, on: entry) }
+                                } label: {
+                                    Label("Stop", systemImage: "stop.fill")
+                                }
+
+                                Button {
+                                    Task { await performAction(.restart, on: entry) }
+                                } label: {
+                                    Label("Restart", systemImage: "arrow.clockwise")
+                                }
+
+                                Divider()
+
+                                Button(role: .destructive) {
+                                    Task { await performAction(.remove, on: entry) }
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
+                                }
+                            }
+                        }
+                    } header: {
+                        classicSectionHeader(server: group.server, runtime: group.entries.first?.runtime ?? .none)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .animation(.default, value: groupedEntries.flatMap(\.entries).map(\.id))
+        }
+    }
+
+    private func classicSectionHeader(server: Server, runtime: ContainerRuntimeKind) -> some View {
+        HStack(spacing: 8) {
+            Text(server.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            if runtime != .none {
+                Text(runtime.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .textCase(nil)
     }
 
     // MARK: - Empty States
@@ -143,6 +345,25 @@ struct ContainersView: View {
         }
     }
 
+    private var filteredEmptyState: some View {
+        ContentUnavailableView {
+            Label(
+                "No Matching Containers",
+                systemImage: selectedFilter == .all ? "magnifyingglass" : "line.3.horizontal.decrease.circle"
+            )
+        } description: {
+            if searchText.isEmpty {
+                Text("No containers match the \(selectedFilter.title.lowercased()) filter.")
+            } else {
+                Text("No containers match \"\(searchText)\" with the \(selectedFilter.title.lowercased()) filter.")
+            }
+        } actions: {
+            if selectedFilter != .all {
+                Button("Show All Containers") { selectedFilter = .all }
+            }
+        }
+    }
+
     // MARK: - Background
 
     private var listBackground: some View {
@@ -158,7 +379,7 @@ struct ContainersView: View {
         .ignoresSafeArea()
     }
 
-    // MARK: - Data
+    // MARK: - Shared Data
 
     private var latestSnapshotByServerID: [UUID: MetricSnapshot] {
         var result: [UUID: MetricSnapshot] = [:]
@@ -168,6 +389,8 @@ struct ContainersView: View {
         }
         return result
     }
+
+    // MARK: - Server Cards Data
 
     private var serversWithSnapshots: [Server] {
         servers.filter { latestSnapshotByServerID[$0.id] != nil }
@@ -179,23 +402,124 @@ struct ContainersView: View {
         return serversWithSnapshots.filter { $0.name.lowercased().contains(q) }
     }
 
-    // MARK: - Card Style
+    // MARK: - Classic Layout Data
 
-    private var cardStylesByServerID: [String: String] {
-        CardStylePreferenceStore.read(from: cardStyleStorage)
+    private var allEntries: [ContainerEntry] {
+        servers.flatMap { server -> [ContainerEntry] in
+            guard
+                let snapshot = latestSnapshotByServerID[server.id],
+                snapshot.containerRuntimeReachable
+            else { return [] }
+
+            return snapshot.containerStatuses.map { container in
+                ContainerEntry(
+                    server: server,
+                    serverID: server.id,
+                    runtime: snapshot.containerRuntime,
+                    container: container,
+                    snapshotDate: snapshot.recordedAt
+                )
+            }
+        }
     }
 
-    private func cardStyle(for serverID: UUID) -> ServerContainerCardStyle {
-        guard let raw = cardStylesByServerID[serverID.uuidString],
+    private func entryPriority(_ entry: ContainerEntry) -> Int {
+        if entry.container.isUnhealthy  { return 0 }
+        if entry.container.isRestarting { return 1 }
+        if entry.container.isRunning    { return 2 }
+        if entry.container.isPaused     { return 3 }
+        if entry.container.isExited     { return 4 }
+        return 5
+    }
+
+    private var sortedEntries: [ContainerEntry] {
+        allEntries.sorted { lhs, rhs in
+            let lp = entryPriority(lhs), rp = entryPriority(rhs)
+            if lp != rp { return lp < rp }
+            if lhs.server.name != rhs.server.name {
+                return lhs.server.name.localizedCaseInsensitiveCompare(rhs.server.name) == .orderedAscending
+            }
+            return lhs.container.name.localizedCaseInsensitiveCompare(rhs.container.name) == .orderedAscending
+        }
+    }
+
+    private var filteredEntries: [ContainerEntry] {
+        sortedEntries.filter { entry in
+            guard entry.container.matches(selectedFilter) else { return false }
+            guard !searchText.isEmpty else { return true }
+
+            let q = searchText.lowercased()
+            return entry.container.name.lowercased().contains(q) ||
+                entry.container.image.lowercased().contains(q) ||
+                entry.server.name.lowercased().contains(q)
+        }
+    }
+
+    private var groupedEntries: [(server: Server, entries: [ContainerEntry])] {
+        let byServer = Dictionary(grouping: filteredEntries, by: \.serverID)
+        return servers
+            .filter { byServer[$0.id] != nil }
+            .map { server in (server: server, entries: byServer[server.id]!) }
+    }
+
+    // MARK: - Server Card Style
+
+    private var serverCardStylesByID: [String: String] {
+        CardStylePreferenceStore.read(from: serverCardStyleStorage)
+    }
+
+    private func serverCardStyle(for serverID: UUID) -> ServerContainerCardStyle {
+        guard let raw = serverCardStylesByID[serverID.uuidString],
               let style = ServerContainerCardStyle(rawValue: raw) else { return .expanded }
         return style
     }
 
-    private func toggleCardStyle(for serverID: UUID) {
-        let next: ServerContainerCardStyle = cardStyle(for: serverID) == .expanded ? .condensed : .expanded
-        var styles = cardStylesByServerID
+    private func toggleServerCardStyle(for serverID: UUID) {
+        let next: ServerContainerCardStyle = serverCardStyle(for: serverID) == .expanded ? .condensed : .expanded
+        var styles = serverCardStylesByID
         styles[serverID.uuidString] = next.rawValue
+        serverCardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+
+    // MARK: - Container Card Style (classic layout)
+
+    private var containerCardStylesByID: [String: String] {
+        CardStylePreferenceStore.read(from: cardStyleStorage)
+    }
+
+    private func containerCardStyle(for entryID: String) -> ContainerCardStyle {
+        guard let raw = containerCardStylesByID[entryID],
+              let style = ContainerCardStyle(rawValue: raw) else { return .compact }
+        return style
+    }
+
+    private func toggleContainerCardStyle(for entryID: String) {
+        let next: ContainerCardStyle = containerCardStyle(for: entryID) == .expanded ? .compact : .expanded
+        var styles = containerCardStylesByID
+        styles[entryID] = next.rawValue
         cardStyleStorage = CardStylePreferenceStore.write(styles)
+    }
+
+    // MARK: - Actions (classic layout)
+
+    private func performAction(_ action: ContainerAction, on entry: ContainerEntry) async {
+        guard entry.runtime != .none else { return }
+        do {
+            let result = try await sshService.runCommand(
+                action.command(for: entry.container.name, runtime: entry.runtime),
+                on: entry.server
+            )
+            guard result.exitStatus == 0 else {
+                let msg = result.standardErrorString.trimmingCharacters(in: .whitespacesAndNewlines)
+                actionError = IdentifiableError(
+                    message: msg.isEmpty ? "\(action.title) failed with status \(result.exitStatus)." : msg
+                )
+                return
+            }
+            try? await metricsPollingService.pollNow(server: entry.server)
+        } catch {
+            actionError = IdentifiableError(message: error.localizedDescription)
+        }
     }
 }
 
