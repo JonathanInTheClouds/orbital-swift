@@ -19,10 +19,12 @@ Optional environment:
   LAB_TEARDOWN=never     Leave the lab running after the script finishes. Default.
   LAB_TEARDOWN=success   Tear the lab down only if all steps pass.
   LAB_TEARDOWN=always    Always tear the lab down before exiting.
+  UI_VISIBLE=1           Bring Simulator to the front during UI tests.
 
 Examples:
   ./Scripts/lab-e2e
   ./Scripts/lab-e2e alpine
+  UI_VISIBLE=1 ./Scripts/lab-e2e all
   LAB_TEARDOWN=always ./Scripts/lab-e2e all
 EOF
 }
@@ -83,3 +85,11 @@ Lab end-to-end run passed.
 UI mode: $UI_MODE
 Teardown: $TEARDOWN_MODE
 EOF
+
+if [ "$TEARDOWN_MODE" = "never" ]; then
+  cat <<EOF
+
+Lab is still running. Tear it down with:
+  ./Scripts/lab-down
+EOF
+fi

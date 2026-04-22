@@ -95,11 +95,14 @@ Run live simulator UI automation against the lab:
 
 `ui-test-lab` targets the live SSH-backed `OrbitalLabUITests` suite only, so the default `OrbitalUITests` bundle stays lightweight and simulator-friendly.
 When you run `all`, it executes each distro as its own focused simulator run instead of one long XCTest session, which is more reliable.
+The final summary prints each distro status plus the `.xcresult` bundle path for debugging failed or flaky runs.
+Use `UI_VISIBLE=1 ./Scripts/ui-test-lab all` to bring Simulator to the front while the tests run.
 
 Run the whole lab flow in one command:
 
 ```bash
 ./Scripts/lab-e2e
+UI_VISIBLE=1 ./Scripts/lab-e2e
 LAB_TEARDOWN=always ./Scripts/lab-e2e alpine
 ```
 

@@ -33,6 +33,7 @@ Optional environment overrides:
   DESTINATION='platform=iOS Simulator,name=iPhone 17,OS=26.4.1'
   DERIVED_DATA_PATH=/tmp/OrbitalDerivedData
   LAB_UI_RETRIES=2
+  UI_VISIBLE=1
 EOF
 }
 
@@ -57,8 +58,13 @@ cd "$ROOT_DIR"
 echo "Running lab UI tests: $MODE"
 echo "Destination: $DESTINATION"
 
+if [ "${UI_VISIBLE:-0}" = "1" ]; then
+  open -a Simulator
+fi
+
 run_xcodebuild() {
   target="$1"
+  log_file="$2"
 
   xcodebuild \
     -project "$PROJECT" \
@@ -67,20 +73,50 @@ run_xcodebuild() {
     -destination "$DESTINATION" \
     -parallel-testing-enabled NO \
     -only-testing:"$target" \
-    test
+    test >"$log_file" 2>&1
+  status=$?
+
+  cat "$log_file"
+  return "$status"
+}
+
+xcresult_path_from_log() {
+  log_file="$1"
+
+  awk '
+    /\.xcresult/ {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /\.xcresult$/) {
+          path = $i
+        }
+      }
+    }
+    END {
+      if (path != "") {
+        print path
+      }
+    }
+  ' "$log_file"
 }
 
 run_mode() {
   mode="$1"
   attempt=1
   target=$(test_target_for "$mode")
+  XCRESULT_PATH=""
 
   while [ "$attempt" -le "$RETRIES" ]; do
     printf '\n==> %s (attempt %s/%s)\n' "$mode" "$attempt" "$RETRIES"
+    log_file=$(mktemp)
 
-    if run_xcodebuild "$target"; then
+    if run_xcodebuild "$target" "$log_file"; then
+      XCRESULT_PATH=$(xcresult_path_from_log "$log_file")
+      rm -f "$log_file"
       return 0
     fi
+
+    XCRESULT_PATH=$(xcresult_path_from_log "$log_file")
+    rm -f "$log_file"
 
     if [ "$attempt" -lt "$RETRIES" ]; then
       printf 'Retrying %s after failed simulator run.\n' "$mode" >&2
@@ -92,17 +128,44 @@ run_mode() {
   return 1
 }
 
+run_and_record() {
+  mode="$1"
+
+  if run_mode "$mode"; then
+    RESULTS="${RESULTS}${mode}: passed  ${XCRESULT_PATH:-no xcresult path found}\n"
+    return 0
+  fi
+
+  RESULTS="${RESULTS}${mode}: failed  ${XCRESULT_PATH:-no xcresult path found}\n"
+  return 1
+}
+
+print_summary() {
+  printf '\nLab UI test summary:\n'
+  printf '%b' "$RESULTS"
+}
+
+RESULTS=""
+status=0
+
 case "$MODE" in
   all)
     for distro in ubuntu debian fedora alpine; do
-      run_mode "$distro"
+      if ! run_and_record "$distro"; then
+        status=1
+      fi
     done
     ;;
   ubuntu|debian|fedora|alpine)
-    run_mode "$MODE"
+    if ! run_and_record "$MODE"; then
+      status=1
+    fi
     ;;
   *)
     usage >&2
     exit 64
     ;;
 esac
+
+print_summary
+exit "$status"
