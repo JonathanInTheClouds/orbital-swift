@@ -6,8 +6,9 @@ Use this checklist before the first TestFlight or App Store submission.
 
 - Choose the final app bundle identifier and update the app, test, and extension targets.
 - Confirm Apple Developer Team signing works for the app and Live Activity extension.
-- Decide export compliance for SSH/libssh encryption use and set `ITSAppUsesNonExemptEncryption` accordingly.
+- Complete App Store Connect's export compliance questionnaire for SSH/libssh encryption use before setting `ITSAppUsesNonExemptEncryption`.
 - Prepare App Store name, subtitle, description, keywords, support URL, privacy policy URL, and screenshots.
+- Publish the privacy policy and add its public URL to App Store Connect.
 
 ## Build Validation
 
@@ -25,6 +26,6 @@ Use this checklist before the first TestFlight or App Store submission.
 
 ## Legal And Metadata
 
-- Select and add the project license before public source release.
+- Keep the project license current if the source distribution strategy changes.
 - Review `THIRD_PARTY_NOTICES.md` against the final dependency bundle.
 - Confirm privacy manifest and App Store privacy answers match actual app behavior.

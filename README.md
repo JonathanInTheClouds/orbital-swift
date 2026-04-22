@@ -184,6 +184,6 @@ SharedLiveActivity/              # Shared ActivityKit attributes between app and
 
 ## License
 
-No public project license has been selected yet. Treat the repository as private/internal source until a license is added.
+Orbital is proprietary source code. See [LICENSE](LICENSE).
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for bundled dependency notices.
