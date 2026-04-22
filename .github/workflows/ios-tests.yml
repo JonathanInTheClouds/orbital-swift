@@ -29,5 +29,8 @@ jobs:
           xcodebuild -showsdks
           xcrun simctl list runtimes available
 
+      - name: Build vendored libssh
+        run: ./Scripts/build-libssh-apple.sh
+
       - name: Run unit tests
         run: ./Scripts/test.sh
