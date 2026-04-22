@@ -63,13 +63,13 @@ class OrbitalUITestCase: XCTestCase {
         XCTAssertTrue(pollNowButton.waitForExistence(timeout: 5), "poll button missing for \(serverName)")
         pollNowButton.tap()
 
+        let cpuGauge = app.otherElements["metrics.gauge.cpu"]
+        let memoryGauge = app.otherElements["metrics.gauge.memory"]
         let diskGauge = app.otherElements["metrics.gauge.disk"]
         assertNoConnectionError(in: app, serverName: serverName)
-        revealMetricsGauge(diskGauge, in: app)
-        XCTAssertTrue(diskGauge.waitForExistence(timeout: 20), "disk gauge missing for \(serverName)")
-
-        let diskValue = diskGauge.value as? String ?? ""
-        XCTAssertNotEqual(diskValue, "0%", "disk gauge remained zero for \(serverName)")
+        assertMetricGauge(cpuGauge, in: app, serverName: serverName, metricName: "CPU")
+        assertMetricGauge(memoryGauge, in: app, serverName: serverName, metricName: "Memory")
+        assertMetricGauge(diskGauge, in: app, serverName: serverName, metricName: "Disk", requireNonZeroPercent: true)
     }
 
     func presentAddServer(in app: XCUIApplication) {
@@ -187,14 +187,32 @@ class OrbitalUITestCase: XCTestCase {
         XCTFail("connection error for \(serverName): \(message)")
     }
 
-    func revealMetricsGauge(_ diskGauge: XCUIElement, in app: XCUIApplication) {
-        guard !diskGauge.exists else { return }
+    func assertMetricGauge(
+        _ gauge: XCUIElement,
+        in app: XCUIApplication,
+        serverName: String,
+        metricName: String,
+        requireNonZeroPercent: Bool = false
+    ) {
+        revealElement(gauge, in: app)
+        XCTAssertTrue(gauge.waitForExistence(timeout: 20), "\(metricName) gauge missing for \(serverName)")
+
+        let gaugeValue = gauge.value as? String ?? ""
+        XCTAssertFalse(gaugeValue.isEmpty, "\(metricName) gauge value was empty for \(serverName)")
+
+        if requireNonZeroPercent {
+            XCTAssertNotEqual(gaugeValue, "0%", "\(metricName) gauge remained zero for \(serverName)")
+        }
+    }
+
+    func revealElement(_ element: XCUIElement, in app: XCUIApplication) {
+        guard !element.exists else { return }
 
         let scrollView = app.scrollViews.firstMatch
         guard scrollView.waitForExistence(timeout: 5) else { return }
 
         for _ in 0..<4 {
-            if diskGauge.exists {
+            if element.exists {
                 return
             }
             scrollView.swipeDown()
