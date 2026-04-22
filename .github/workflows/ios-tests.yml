@@ -27,6 +27,4 @@ jobs:
         run: xcodebuild -version
 
       - name: Run unit tests
-        env:
-          DESTINATION: platform=iOS Simulator,name=iPhone 17
         run: ./Scripts/test.sh
