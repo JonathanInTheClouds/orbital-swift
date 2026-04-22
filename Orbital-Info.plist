@@ -25,7 +25,7 @@
 		<string>_orbital-permission-check._tcp</string>
 	</array>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Orbital uses Face ID to lock the app and protect access to your saved credentials.</string>
+	<string>Orbital uses Face ID to unlock the Credential Vault, where you can review and manage saved credentials.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Orbital uses your local network to discover and connect to nearby servers.</string>
 	<key>NSSupportsLiveActivities</key>

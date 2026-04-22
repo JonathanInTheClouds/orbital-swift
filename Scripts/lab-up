@@ -4,6 +4,25 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/test-lab/compose.yaml"
+SSH_KEY="$ROOT_DIR/test-lab/keys/orbital_lab_key"
+SSH_KEY_PUB="$SSH_KEY.pub"
+
+ensure_lab_key() {
+    if [ -f "$SSH_KEY" ] && [ -f "$SSH_KEY_PUB" ]; then
+        chmod 600 "$SSH_KEY"
+        return 0
+    fi
+
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        echo "ssh-keygen is required to create the local lab SSH key." >&2
+        exit 1
+    fi
+
+    mkdir -p "$ROOT_DIR/test-lab/keys"
+    rm -f "$SSH_KEY" "$SSH_KEY_PUB"
+    ssh-keygen -t ed25519 -N "" -f "$SSH_KEY" -C "orbital-local-test-lab" >/dev/null
+    chmod 600 "$SSH_KEY"
+}
 
 resolve_compose() {
     if [ -n "${COMPOSE_CMD:-}" ]; then
@@ -30,6 +49,8 @@ else
     echo "No working Compose runtime found. Start Docker Desktop, or if you use Podman make sure 'podman info' succeeds before running the lab." >&2
     exit 1
 fi
+
+ensure_lab_key
 
 echo "Using Compose command: $COMPOSE"
 sh -c "$COMPOSE -f \"$COMPOSE_FILE\" up -d --build"

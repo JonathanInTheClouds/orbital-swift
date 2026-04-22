@@ -4,7 +4,7 @@
 
 Orbital lets you manage remote Linux and macOS servers from your iPhone. It combines saved server profiles, live metrics dashboards, interactive terminal sessions, container controls, and secure credential storage in a single SwiftUI app.
 
-![Platform](https://img.shields.io/badge/platform-iOS%2026.4%2B-blue) ![Swift](https://img.shields.io/badge/swift-5.0-orange) ![Xcode](https://img.shields.io/badge/xcode-16%2B-blue)
+![Platform](https://img.shields.io/badge/platform-iOS%2026.0%2B-blue) ![Swift](https://img.shields.io/badge/swift-5.0-orange) ![Xcode](https://img.shields.io/badge/xcode-16%2B-blue)
 
 ---
 
@@ -15,17 +15,10 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone. It comb
 - **Server Monitoring** — Live CPU, memory, disk, network, uptime, and load metrics collected over SSH
 - **Container Management** — View, inspect, start, stop, restart, pause, and remove Docker or Podman containers
 - **SSH Key Management** — Generate ED25519 keys, import existing private keys, and deploy public keys to servers
-- **Credential Vault** — Passwords and SSH private keys stored in the iOS Keychain, with biometric unlock support for the vault
+- **Credential Vault** — Passwords and SSH private keys stored in the iOS Keychain, with biometric unlock support for reviewing vault entries
 - **Known Hosts** — Host key fingerprint tracking, mismatch detection, and manual clearing from Settings
 - **Connection Reuse** — Shared SSH transports for terminal sessions, commands, and metrics polling
 - **Live Activities** — Server health metrics surfaced on the Lock Screen and Dynamic Island via ActivityKit
-- **Script Models** — `Script` and `ScriptRun` persistence models are present for future automation work, but there is no script UI yet
-
----
-
-## Screenshots
-
-*Screenshots coming soon.*
 
 ---
 
@@ -34,7 +27,7 @@ Orbital lets you manage remote Linux and macOS servers from your iPhone. It comb
 | Requirement | Version |
 |---|---|
 | Xcode | 16+ |
-| iOS Deployment Target | 26.4+ |
+| iOS Deployment Target | 26.0+ |
 | macOS (build machine) | 14.4+ |
 
 ---
@@ -191,4 +184,6 @@ SharedLiveActivity/              # Shared ActivityKit attributes between app and
 
 ## License
 
-*License TBD.*
+No public project license has been selected yet. Treat the repository as private/internal source until a license is added.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for bundled dependency notices.

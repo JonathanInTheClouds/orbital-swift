@@ -48,6 +48,11 @@ extract_linux_metrics_command() {
 }
 
 prepare_ssh_key() {
+    if [ ! -f "$SSH_KEY" ]; then
+        echo "Missing lab SSH key at test-lab/keys/orbital_lab_key. Run ./Scripts/lab-up to generate it and start the lab." >&2
+        exit 1
+    fi
+
     SSH_KEY_TEMP=$(mktemp)
     cp "$SSH_KEY" "$SSH_KEY_TEMP"
     chmod 600 "$SSH_KEY_TEMP"

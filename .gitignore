@@ -35,6 +35,8 @@ fastlane/test_output/
 *.key
 *.p12
 *.mobileprovision
+test-lab/keys/orbital_lab_key
+test-lab/keys/orbital_lab_key.pub
 
 # Local AI/editor tooling
 .claude/
